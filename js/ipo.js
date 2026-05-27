@@ -4,7 +4,7 @@
    Action: ipo.isPublic = true, +Rp 50,000,000,000 cash injection split
            across banks, title becomes "Public Listed Company".
    Obligation: every 360 days post-IPO, automatic 5% dividend payout.
-               If unable to pay, companyLevel decreases by 1.
+               If unable to pay fully, companyLevel decreases by 1.
    ========================================================================= */
 
 (function (global) {
@@ -18,15 +18,24 @@
   const DIVIDEND_INTERVAL  = 360;                 // 12 in-game months
   const DIVIDEND_RATE      = 0.05;
 
+  function ensureIPO(state) {
+    if (!state.ipo) {
+      state.ipo = { isPublic: false, ipoDay: null, lastDividendDay: null };
+    }
+    return state.ipo;
+  }
+
   function isEligible(state) {
-    if (!state || (state.ipo && state.ipo.isPublic)) return false;
+    ensureIPO(state);
+    if (state.ipo.isPublic) return false;
     JI.recomputeNetWorth(state);
     return (state.companyLevel >= IPO_LEVEL_REQ) &&
            (state.totalNetWorth >= IPO_NETWORTH_REQ);
   }
 
   function eligibilityReason(state) {
-    if (state.ipo && state.ipo.isPublic) return 'Perusahaan sudah berstatus publik.';
+    ensureIPO(state);
+    if (state.ipo.isPublic) return 'Perusahaan sudah berstatus publik.';
     JI.recomputeNetWorth(state);
     const reasons = [];
     if (state.companyLevel < IPO_LEVEL_REQ) {
@@ -39,7 +48,7 @@
   }
 
   /**
-   * Execute IPO. Splits cash injection across all banks.
+   * Execute IPO. Splits the Rp 50bn cash injection unequally across banks.
    */
   function goPublic(state) {
     if (!isEligible(state)) {
@@ -49,7 +58,6 @@
       return { ok: false, error: 'Tidak ada rekening bank aktif.' };
     }
 
-    // Split injection unequally across banks (using existing helper).
     const parts = JI.splitUnequal(IPO_CASH_INJECTION, state.banks.length, 1_000_000);
     state.banks.forEach((b, i) => {
       JI.bankCredit(state, b.id, parts[i], 'IPO Cash Injection — Go Public');
@@ -70,9 +78,11 @@
 
   /**
    * Daily check: if 360 days have passed since IPO (or last dividend), pay.
+   * Returns { ok, paid, shortfall, demoted } or null if not due.
    */
   function tickDividend(state) {
-    if (!state.ipo || !state.ipo.isPublic) return null;
+    ensureIPO(state);
+    if (!state.ipo.isPublic) return null;
     const last = state.ipo.lastDividendDay || state.ipo.ipoDay || state.totalDays;
     if (state.totalDays - last < DIVIDEND_INTERVAL) return null;
 
@@ -80,7 +90,7 @@
     const dueAmount = Math.max(0, Math.round(state.totalNetWorth * DIVIDEND_RATE));
     if (dueAmount <= 0) {
       state.ipo.lastDividendDay = state.totalDays;
-      return { ok: true, paid: 0, demoted: false };
+      return { ok: true, paid: 0, shortfall: 0, demoted: false };
     }
 
     const result = JI.debitAcrossBanks(state, dueAmount, 'Dividen Publik tahunan (5%)');
@@ -125,8 +135,7 @@
     card.appendChild(JI.el('p', { class: 'blackswan-body' },
       `Suntikan dana segar ${JI.formatIDR(IPO_CASH_INJECTION)} masuk ke rekening Anda. ` +
       `Status baru: Public Listed Company. Wajib bayar dividen 5% setiap 12 bulan.`));
-    card.appendChild(JI.el('p', { class: 'blackswan-date' },
-      `${JI.formatCalendar(state.totalDays)}`));
+    card.appendChild(JI.el('p', { class: 'blackswan-date' }, JI.formatCalendar(state.totalDays)));
     card.appendChild(JI.el('button', {
       class: 'blackswan-dismiss',
       onclick: () => overlay.remove(),

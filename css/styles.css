@@ -267,43 +267,255 @@ input[type=number]::-webkit-inner-spin-button {
 input[type=number] { -moz-appearance: textfield; }
 
 
-/* =========================================================================
-   PHASE 4 — Floating Next Day, IPO badge, Mutasi Rekening, VC outcomes,
-   Black Swan modal.
-   ========================================================================= */
 
-/* ---------- Floating "Next Day" action button ---------- */
-.next-day-fab {
-  position: fixed;
-  right: 1rem;
-  bottom: 5rem; /* above mobile bottom nav */
-  z-index: 50;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.7rem 1rem;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #10b981, #047857);
-  color: #fff;
+/* ==========================================================================
+   Phase 2 — Market, News, Physical Assets
+   ========================================================================== */
+
+/* ---------- Next Day button (highlight) ---------- */
+#next-day-btn {
+  background: linear-gradient(135deg, #34d399, #10b981);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #052e2b;
   font-weight: 700;
-  box-shadow: 0 14px 32px -10px rgba(5, 150, 105, 0.55),
-              0 4px 12px -2px rgba(15, 23, 42, 0.25);
-  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
-  cursor: pointer;
-  border: 2px solid rgba(255,255,255,0.15);
+  box-shadow: 0 4px 14px -4px rgba(16, 185, 129, 0.55);
 }
-.next-day-fab:hover { filter: brightness(1.05); transform: translateY(-1px); }
-.next-day-fab:active { transform: translateY(1px) scale(0.98); }
-.next-day-fab .nd-icon { font-size: 1.1rem; }
-.next-day-fab .nd-label { line-height: 1; text-align: left; }
+#next-day-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+}
 
-@media (min-width: 768px) {
-  .next-day-fab {
-    bottom: 1.5rem;
-    right: 1.5rem;
-    padding: 0.85rem 1.25rem;
+/* ---------- Market table ---------- */
+.tab-panel table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tab-panel thead th:first-child { border-top-left-radius: 0.75rem; }
+.tab-panel thead th:last-child  { border-top-right-radius: 0.75rem; }
+.tab-panel tbody tr:last-child td { border-bottom: 0; }
+.tab-panel tbody tr:hover         { background: #f8fafc; }
+
+/* Sticky header on long tables */
+.tab-panel .ji-card thead th {
+  position: sticky;
+  top: 0;
+  background: #f1f5f9;
+  z-index: 1;
+}
+
+/* Trend arrows */
+.trend-up   { color: #059669; }
+.trend-down { color: #e11d48; }
+.trend-flat { color: #64748b; }
+
+/* ---------- News cards ---------- */
+.tab-panel section,
+.tab-panel article {
+  word-break: break-word;
+}
+
+/* Subtle pulse for "today" news block to draw attention */
+@keyframes newsPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+  50%      { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.06); }
+}
+.news-today { animation: newsPulse 2.4s ease-in-out infinite; }
+
+/* ---------- Asset cards (Aset Fisik) ---------- */
+.asset-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  padding: 1rem;
+  transition: box-shadow 0.18s, transform 0.05s;
+}
+.asset-card:hover {
+  box-shadow: 0 12px 28px -16px rgba(15, 23, 42, 0.25);
+}
+.asset-card:active { transform: translateY(1px); }
+
+.asset-emoji {
+  font-size: 2.5rem;
+  line-height: 1;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
+}
+
+.brand-block {
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+}
+
+/* Electric vehicle accent stripe */
+.ev-accent {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(34, 211, 238, 0.06));
+}
+
+/* ---------- Modal polish ---------- */
+#ji-modal {
+  animation: modalIn 0.18s ease-out;
+}
+@keyframes modalIn {
+  from { background: rgba(0,0,0,0); }
+  to   { background: rgba(0,0,0,0.6); }
+}
+#ji-modal > div {
+  animation: cardIn 0.22s ease-out;
+}
+@keyframes cardIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+/* ---------- Mobile-first overrides ---------- */
+@media (max-width: 640px) {
+  .ji-card { border-radius: 0.85rem; }
+  .desktop-tab { display: none; }
+  /* Slightly tighter padding for stat cards on phones */
+  .ji-card.p-5 { padding: 1rem; }
+  /* Stack header date+button cleanly */
+  #next-day-btn {
+    padding: 0.45rem 0.75rem;
+    font-size: 0.75rem;
   }
 }
+
+/* Compact spacing for market table on small/medium */
+@media (max-width: 1023px) {
+  .tab-panel table th,
+  .tab-panel table td { padding: 0.6rem 0.75rem; }
+}
+
+/* ---------- Buy/Sell action buttons inside tables ---------- */
+.row-action {
+  padding: 0.35rem 0.75rem !important;
+  font-size: 0.72rem !important;
+  border-radius: 0.45rem !important;
+}
+
+/* ---------- News mood badges ---------- */
+.mood-bullish { color: #059669; }
+.mood-bearish { color: #e11d48; }
+.mood-neutral { color: #64748b; }
+
+/* ---------- Sparkline placeholder (Phase 3) ---------- */
+.sparkline {
+  height: 28px;
+  width: 80px;
+  background: linear-gradient(90deg, transparent, rgba(15,23,42,0.05));
+  border-radius: 4px;
+}
+
+
+
+/* ==========================================================================
+   Phase 3 — Game loop, level-up, HRD, CoreTax, single-file polish
+   ========================================================================== */
+
+/* ---------- Day-loop loading overlay ---------- */
+#day-loading-overlay {
+  animation: dayOverlayIn 0.18s ease-out;
+}
+@keyframes dayOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.loading-spinner {
+  width: 64px; height: 64px;
+  border: 4px solid rgba(255,255,255,0.08);
+  border-top-color: #34d399;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Tier pill on Home hero ---------- */
+.tier-pill {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.18), rgba(20, 184, 166, 0.10));
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: #ecfdf5;
+  padding: 0.5rem 0.85rem;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+
+/* ---------- Level-up modal ---------- */
+.levelup-card {
+  background: linear-gradient(135deg, #0b1220 0%, #14532d 50%, #0b1220 100%);
+  border: 2px solid rgba(52, 211, 153, 0.45);
+  position: relative;
+  overflow: hidden;
+}
+.levelup-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(52, 211, 153, 0.30), transparent 60%);
+  pointer-events: none;
+}
+.levelup-burst {
+  display: inline-block;
+  animation: burst 1.6s ease-out infinite;
+  filter: drop-shadow(0 6px 14px rgba(52, 211, 153, 0.55));
+}
+@keyframes burst {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  35%      { transform: scale(1.2) rotate(-6deg); }
+  70%      { transform: scale(0.95) rotate(4deg); }
+}
+
+/* ---------- HRD role / tier cards ---------- */
+.hrd-tier-active {
+  border-color: #34d399 !important;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.12);
+}
+
+/* ---------- CoreTax overdue rows ---------- */
+.tax-overdue {
+  background: linear-gradient(135deg, #fff7ed, #fef2f2);
+  border-color: #fdba74;
+}
+.tax-penalty-active {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  border-color: #fca5a5;
+}
+
+/* ---------- Reset Game button — emphasized warning style ---------- */
+.ji-btn.danger {
+  background: #e11d48;
+  color: #fff;
+}
+.ji-btn.danger:hover:not(:disabled) {
+  background: #be123c;
+}
+
+/* ---------- Prediction badge on Market tickers ---------- */
+.predict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  border-radius: 0.35rem;
+  margin-left: 0.4rem;
+}
+.predict-up   { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.predict-down { background: rgba(244, 63, 94, 0.12);  color: #be123c; }
+
+/* ---------- Mobile tweaks ---------- */
+@media (max-width: 640px) {
+  .levelup-card { padding: 1.5rem; }
+  #day-loading-overlay .loading-spinner {
+    width: 52px; height: 52px;
+  }
+  .tier-pill { font-size: 0.75rem; padding: 0.4rem 0.65rem; }
+}
+
+
+
+/* =========================================================================
+   PHASE 4 — IPO badge, Mutasi Rekening, VC outcomes, Black Swan modal
+   ========================================================================= */
 
 /* ---------- IPO badge ---------- */
 .ipo-badge {
@@ -389,7 +601,7 @@ input[type=number] { -moz-appearance: textfield; }
 .mutasi-row.in  .mutasi-amount { color: #047857; }
 .mutasi-row.out .mutasi-amount { color: #b91c1c; }
 
-/* ---------- VC startup card ---------- */
+/* ---------- VC ---------- */
 .vc-card {
   background:
     radial-gradient(circle at 0% 0%, rgba(139,92,246,0.06), transparent 50%),

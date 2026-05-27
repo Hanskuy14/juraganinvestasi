@@ -27,23 +27,36 @@
     { id: 'bengkelonline', name: 'BengkelOnline', sector: 'Automotive',  icon: '🔧' },
   ];
 
-  const ROTATION_DAYS   = 30;
-  const ACTIVE_COUNT    = 3;
-  const LOCK_MIN_DAYS   = 90;
-  const LOCK_MAX_DAYS   = 120;
+  const ROTATION_DAYS = 30;
+  const ACTIVE_COUNT  = 3;
+  const LOCK_MIN_DAYS = 90;
+  const LOCK_MAX_DAYS = 120;
 
   /* Outcome probabilities (must sum to 1.0) */
   const P_BANKRUPT    = 0.70;
   const P_ACQUISITION = 0.20;
   const P_UNICORN     = 0.10;
 
-  /* ---------- Pool helpers ---------- */
-  function lookup(id) {
-    return STARTUP_POOL.find(s => s.id === id);
-  }
+  const PITCH = {
+    kopisenja:     'Jaringan coffee shop premium dengan model "ghost kitchen".',
+    warungtech:    'POS SaaS untuk 5 juta warung mikro di Indonesia.',
+    ojekterbang:   'Layanan eVTOL urban mobility B2B antar-kantor.',
+    tanimaju:      'Marketplace input pertanian + agronomy AI.',
+    sehatklinik:   'Klinik tele-medicine dengan jaringan 500 mitra dokter.',
+    edunusantara:  'Bimbel adaptive-learning untuk siswa SMA.',
+    juragankos:    'Aggregator kos-kosan profesional dengan smart-lock.',
+    kasircepet:    'Cash-in/out merchant terdesentralisasi.',
+    dapurcloud:    'Cloud kitchen multi-brand di 12 kota Tier-2.',
+    ternaklele:    'Smart farming kolam lele berbasis IoT.',
+    laundrygo:     'On-demand laundry pickup dengan driver fleet.',
+    tiketliburan:  'OTA niche untuk paket wisata Nusantara.',
+    sampahpintar:  'Tokenisasi sampah daur ulang untuk komunitas.',
+    bajubekas:     'C2C re-commerce thrift fashion premium.',
+    bengkelonline: 'Bengkel-on-call untuk roda 2 dan roda 4.',
+  };
 
-  function makeListing(seed) {
-    // Each listing has a random "seeking amount" range to add flavor.
+  /* ---------- Pool helpers ---------- */
+  function makeListing(seed, day) {
     const seeking = (10 + JI.randomInt(0, 90)) * 1_000_000; // Rp 10jt - 100jt
     return {
       id: seed.id,
@@ -51,56 +64,44 @@
       sector: seed.sector,
       icon: seed.icon,
       seekingAmount: seeking,
-      pitch: pitchFor(seed),
-      refreshedOn: 0,
+      pitch: PITCH[seed.id] || `Startup di sektor ${seed.sector}.`,
+      refreshedOn: day,
     };
   }
 
-  function pitchFor(seed) {
-    const map = {
-      kopisenja:     'Jaringan coffee shop premium dengan model "ghost kitchen".',
-      warungtech:    'POS SaaS untuk 5 juta warung mikro di Indonesia.',
-      ojekterbang:   'Layanan eVTOL urban mobility B2B antar-kantor.',
-      tanimaju:      'Marketplace input pertanian + agronomy AI.',
-      sehatklinik:   'Klinik tele-medicine dengan jaringan 500 mitra dokter.',
-      edunusantara:  'Bimbel adaptive-learning untuk siswa SMA.',
-      juragankos:    'Aggregator kos-kosan profesional dengan smart-lock.',
-      kasircepet:    'Cash-in/out merchant terdesentralisasi.',
-      dapurcloud:    'Cloud kitchen multi-brand di 12 kota Tier-2.',
-      ternaklele:    'Smart farming kolam lele berbasis IoT.',
-      laundrygo:     'On-demand laundry pickup dengan driver fleet.',
-      tiketliburan:  'OTA niche untuk paket wisata Nusantara.',
-      sampahpintar:  'Tokenisasi sampah daur ulang untuk komunitas.',
-      bajubekas:     'C2C re-commerce thrift fashion premium.',
-      bengkelonline: 'Bengkel-on-call untuk roda 2 dan roda 4.',
-    };
-    return map[seed.id] || `Startup di sektor ${seed.sector}.`;
+  function ensureVC(state) {
+    if (!state.vc) {
+      state.vc = {
+        activeStartups: [],
+        lastRotationDay: 0,
+        investments: [],
+        maturedHistory: [],
+      };
+    }
+    if (!Array.isArray(state.vc.activeStartups)) state.vc.activeStartups = [];
+    if (!Array.isArray(state.vc.investments))    state.vc.investments    = [];
+    if (!Array.isArray(state.vc.maturedHistory)) state.vc.maturedHistory = [];
+    return state.vc;
   }
 
   /* ---------- Initial / forced rotation ---------- */
   function rotateActiveStartups(state) {
-    if (!state.vc) state.vc = { activeStartups: [], lastRotationDay: 0, investments: [], maturedHistory: [] };
-
-    // Pick 3 distinct random pool members
+    ensureVC(state);
     const pool = [...STARTUP_POOL];
     const picks = [];
     while (picks.length < ACTIVE_COUNT && pool.length > 0) {
       const idx = JI.randomInt(0, pool.length - 1);
       const seed = pool.splice(idx, 1)[0];
-      const listing = makeListing(seed);
-      listing.refreshedOn = state.totalDays;
-      picks.push(listing);
+      picks.push(makeListing(seed, state.totalDays));
     }
-    state.vc.activeStartups   = picks;
-    state.vc.lastRotationDay  = state.totalDays;
+    state.vc.activeStartups  = picks;
+    state.vc.lastRotationDay = state.totalDays;
     return picks;
   }
 
   function maybeRotate(state) {
-    if (!state.vc) return rotateActiveStartups(state);
-    if (!state.vc.activeStartups || state.vc.activeStartups.length === 0) {
-      return rotateActiveStartups(state);
-    }
+    ensureVC(state);
+    if (state.vc.activeStartups.length === 0) return rotateActiveStartups(state);
     if (state.totalDays - state.vc.lastRotationDay >= ROTATION_DAYS) {
       return rotateActiveStartups(state);
     }
@@ -108,20 +109,14 @@
   }
 
   /* ---------- Invest ---------- */
-  let nextInvestmentId = 1;
-  function freshInvestmentId(state) {
-    // Use the longest-running counter we can to avoid collisions across reloads.
-    const max = Math.max(0, ...((state.vc?.investments || []).map(i => i._n || 0)));
-    nextInvestmentId = Math.max(nextInvestmentId, max + 1);
-    return nextInvestmentId++;
+  let _invCounter = 1;
+  function freshInvestmentId() {
+    return 'inv_' + Date.now().toString(36) + '_' + (_invCounter++).toString(36);
   }
 
-  /**
-   * Invest a custom IDR amount in one of the active startups, drawing cash
-   * from a chosen bank.
-   */
   function invest(state, startupId, amount, fromBankId) {
-    const startup = (state.vc?.activeStartups || []).find(s => s.id === startupId);
+    ensureVC(state);
+    const startup = state.vc.activeStartups.find(s => s.id === startupId);
     if (!startup) return { ok: false, error: 'Startup ini sedang tidak menggalang dana.' };
 
     const amt = Math.floor(Number(amount) || 0);
@@ -134,8 +129,7 @@
 
     const lockDays = JI.randomInt(LOCK_MIN_DAYS, LOCK_MAX_DAYS);
     const inv = {
-      _n: freshInvestmentId(state),
-      id: 'inv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      id: freshInvestmentId(),
       startupId: startup.id,
       startupName: startup.name,
       sector: startup.sector,
@@ -169,9 +163,9 @@
     return { kind: 'Unicorn IPO', multiplier: Math.round(mult * 100) / 100 };
   }
 
-  /* ---------- Maturity tick — call once per in-game day ---------- */
+  /* ---------- Maturity tick ---------- */
   function tickInvestments(state) {
-    if (!state.vc || !Array.isArray(state.vc.investments)) return [];
+    ensureVC(state);
     const matured = [];
     const remaining = [];
     for (const inv of state.vc.investments) {
@@ -179,15 +173,10 @@
         const outcome = rollOutcome();
         const payout = Math.round(inv.amount * outcome.multiplier);
         if (payout > 0) {
-          JI.bankCredit(
-            state,
-            inv.fromBankId,
-            payout,
-            `VC ${outcome.kind}: ${inv.startupName} (${outcome.multiplier}x)`
-          );
+          JI.bankCredit(state, inv.fromBankId, payout,
+            `VC ${outcome.kind}: ${inv.startupName} (${outcome.multiplier}x)`);
         } else {
-          // Record a zero-value out-event for clarity in audit.
-          // (No actual cash movement; we just leave a note in the bank that hosted the original outflow.)
+          // Zero-value notation for clarity in audit (no actual cash movement).
           const bank = JI.getBank(state, inv.fromBankId);
           if (bank) {
             JI.recordHistory(state, bank, 'OUT', 0,
@@ -212,8 +201,7 @@
 
         matured.push(record);
 
-        // XP: massive for unicorn, decent for acquisition
-        if (outcome.kind === 'Unicorn IPO')   JI.awardXP(state, 1500);
+        if (outcome.kind === 'Unicorn IPO')      JI.awardXP(state, 1500);
         else if (outcome.kind === 'Acquisition') JI.awardXP(state, 400);
       } else {
         remaining.push(inv);

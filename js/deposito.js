@@ -58,6 +58,7 @@
       maturityDay: state.totalDays + term.days,
       isMatured: false,
     };
+    if (!Array.isArray(bank.depositos)) bank.depositos = [];
     bank.depositos.push(dep);
 
     JI.recomputeNetWorth(state);
@@ -67,6 +68,7 @@
 
   /**
    * Daily tick: pay out matured deposits.
+   * Returns array of { bankId, bankShortName, principal, interest, payout, months }.
    */
   function tickDepositos(state) {
     const matured = [];
@@ -85,7 +87,7 @@
             payout: dep.payout,
             months: dep.months,
           });
-          // Don't keep matured deposits in the bank's array — they're done.
+          // matured deposits drop off the active list — payout was credited above
         } else {
           remaining.push(dep);
         }

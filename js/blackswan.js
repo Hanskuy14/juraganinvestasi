@@ -1,7 +1,9 @@
 /* =========================================================================
    blackswan.js — Rare global market shocks. 1.5% chance each in-game day.
-   Each event applies an instant multiplier to part of the market and
-   blocks the standard daily price drift for that day (per spec).
+   Each event applies an instant multiplier to part of the marketAssets map
+   (built by market.js) and sets activeEventModifier so that app.js can
+   skip the standard news-driven price update for that day (per spec:
+   events override standard daily news multipliers).
    ========================================================================= */
 
 (function (global) {
@@ -10,6 +12,50 @@
   const JI = global.JI || (global.JI = {});
 
   const TRIGGER_CHANCE = 0.015; // 1.5% per day
+
+  /* ---------- Market scaling helpers ---------- */
+  function scaleAllInCategory(state, category, factor) {
+    if (!state || !state.marketAssets) return 0;
+    let count = 0;
+    Object.values(state.marketAssets).forEach(a => {
+      if (a.category === category) {
+        a.prevPrice = a.price;
+        a.price = Math.max(1, Math.round(a.price * factor));
+        a.dayChange    = a.price - a.prevPrice;
+        a.dayChangePct = a.prevPrice > 0 ? (a.dayChange / a.prevPrice) * 100 : 0;
+        count += 1;
+      }
+    });
+    return count;
+  }
+
+  function scaleAllStocks(state, factor)  { return scaleAllInCategory(state, 'saham',  factor); }
+  function scaleAllCryptos(state, factor) { return scaleAllInCategory(state, 'crypto', factor); }
+
+  /**
+   * Scale stocks whose static-catalog `sector` field matches.
+   * Tech-related sectors in main's catalog: Teknologi, Telekomunikasi.
+   * Banking sector key: Perbankan. Auto: Otomotif. Energy: Energi.
+   */
+  function scaleStocksBySector(state, sectorMatcher, factor) {
+    if (!state || !state.marketAssets) return 0;
+    const matchers = Array.isArray(sectorMatcher) ? sectorMatcher : [sectorMatcher];
+    const stockDefs = JI.STOCKS || [];
+    const matchedTickers = new Set(
+      stockDefs.filter(s => matchers.includes(s.sector)).map(s => s.ticker)
+    );
+    let count = 0;
+    matchedTickers.forEach(ticker => {
+      const a = state.marketAssets[ticker];
+      if (!a) return;
+      a.prevPrice = a.price;
+      a.price = Math.max(1, Math.round(a.price * factor));
+      a.dayChange    = a.price - a.prevPrice;
+      a.dayChangePct = a.prevPrice > 0 ? (a.dayChange / a.prevPrice) * 100 : 0;
+      count += 1;
+    });
+    return count;
+  }
 
   /* ---------- Catalogue ---------- */
   const BLACK_SWAN_EVENTS = [
@@ -21,8 +67,8 @@
       severity: 'red',
       icon: '☣',
       apply(s) {
-        JI.scaleAllStocks(s, 0.70);
-        JI.scaleAllCryptos(s, 0.60);
+        scaleAllStocks(s, 0.70);
+        scaleAllCryptos(s, 0.60);
       },
     },
     {
@@ -33,7 +79,7 @@
       severity: 'red',
       icon: '❄',
       apply(s) {
-        JI.scaleAllCryptos(s, 0.40);
+        scaleAllCryptos(s, 0.40);
       },
     },
     {
@@ -44,8 +90,8 @@
       severity: 'green',
       icon: '⚡',
       apply(s) {
-        JI.scaleStocksBySector(s, 'Tech', 1.50);
-        JI.scaleAllCryptos(s, 1.50);
+        scaleStocksBySector(s, ['Teknologi', 'Telekomunikasi'], 1.50);
+        scaleAllCryptos(s, 1.50);
       },
     },
     {
@@ -56,7 +102,7 @@
       severity: 'red',
       icon: '🏦',
       apply(s) {
-        JI.scaleStocksBySector(s, 'Banking', 0.65);
+        scaleStocksBySector(s, 'Perbankan', 0.65);
       },
     },
     {
@@ -67,8 +113,8 @@
       severity: 'amber',
       icon: '🛢',
       apply(s) {
-        JI.scaleStocksBySector(s, 'Auto',   0.75);
-        JI.scaleStocksBySector(s, 'Energy', 1.20);
+        scaleStocksBySector(s, 'Otomotif', 0.75);
+        scaleStocksBySector(s, 'Energi',   1.20);
       },
     },
     {
@@ -79,8 +125,8 @@
       severity: 'green',
       icon: '🕊',
       apply(s) {
-        JI.scaleAllStocks(s,  1.20);
-        JI.scaleAllCryptos(s, 1.30);
+        scaleAllStocks(s,  1.20);
+        scaleAllCryptos(s, 1.30);
       },
     },
   ];
@@ -90,6 +136,10 @@
     return BLACK_SWAN_EVENTS[JI.randomInt(0, BLACK_SWAN_EVENTS.length - 1)];
   }
 
+  /**
+   * Roll the dice. If event fires, mutate state and show modal.
+   * Returns the event object on fire, otherwise null.
+   */
   function tryRoll(state) {
     if (Math.random() < TRIGGER_CHANCE) {
       return triggerEvent(state, pickRandomEvent());
@@ -101,30 +151,31 @@
     if (!event) return null;
     event.apply(state);
 
-    // Mark daily-drift skip for one day (per spec: overrides daily multipliers).
+    // Daily price tick must be skipped for this day (spec: overrides news multipliers).
     state.activeEventModifier = {
       eventId: event.id,
       day: state.totalDays,
-      expiresInDays: 1,
+      title: event.title,
+      severity: event.severity,
     };
 
+    state.eventHistory = state.eventHistory || [];
     state.eventHistory.unshift({
       day: state.totalDays,
       date: JI.formatCalendar(state.totalDays),
       eventId: event.id,
       title: event.title,
+      headline: event.headline,
       severity: event.severity,
     });
     if (state.eventHistory.length > 50) state.eventHistory.length = 50;
 
-    // Show modal to player
     showBlackSwanModal(event, state);
     return event;
   }
 
   /* ---------- Modal ---------- */
   function showBlackSwanModal(event, state) {
-    // Remove any pre-existing modal first.
     const existing = document.getElementById('blackswan-modal');
     if (existing) existing.remove();
 
@@ -144,11 +195,10 @@
     dramatic.appendChild(JI.el('p', { class: 'blackswan-date' },
       `Tercatat pada ${JI.formatCalendar(state.totalDays)}`));
 
-    const dismiss = JI.el('button', {
+    dramatic.appendChild(JI.el('button', {
       class: 'blackswan-dismiss',
       onclick: () => overlay.remove(),
-    }, 'Saya Mengerti');
-    dramatic.appendChild(dismiss);
+    }, 'Saya Mengerti'));
 
     overlay.appendChild(dramatic);
     document.body.appendChild(overlay);
@@ -161,5 +211,8 @@
     rollBlackSwan: tryRoll,
     triggerBlackSwan: triggerEvent,
     showBlackSwanModal,
+    scaleAllStocks,
+    scaleAllCryptos,
+    scaleStocksBySector,
   });
 })(window);
