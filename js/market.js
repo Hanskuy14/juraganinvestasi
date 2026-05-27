@@ -384,13 +384,16 @@
     const cashback = Math.round(grossCost * broker.cashbackRate);
     const totalCharge = grossCost + fee;
 
-    // Charge total via universal payment helper
-    const charged = JI.charge(state, totalCharge, payment);
+    // Charge total via universal payment helper (with audit label)
+    const charged = JI.charge(state, totalCharge, {
+      ...payment,
+      label: `Beli ${qty} ${ticker}`,
+    });
     if (!charged.ok) return { ok: false, error: charged.error };
 
     // Deposit cashback to chosen bank (Bandar broker perk)
     if (cashback > 0 && payment.bankId) {
-      JI.deposit(state, payment.bankId, cashback);
+      JI.deposit(state, payment.bankId, cashback, `Cashback Bandar — ${ticker}`);
     }
 
     // Track lifetime stats
@@ -464,9 +467,8 @@
 
     const netProceeds = grossProceeds - fee - pphFinal + cashback;
 
-    // Credit bank with net proceeds
-    bank.balance += netProceeds;
-    JI.refreshBankDerived?.(bank);
+    // Credit bank with net proceeds (audit-logged)
+    JI.deposit(state, bankId, netProceeds, `Jual ${ticker} — net dari ${qty} ${idxLabel(holding.category)}`);
 
     // Update holding
     holding.qty -= qty;
@@ -528,6 +530,12 @@
      ========================================================================= */
   function categoryLabel(key) {
     return CATEGORY[key] ? CATEGORY[key].label : key;
+  }
+
+  function idxLabel(category) {
+    return category === 'crypto' ? 'unit'
+         : category === 'saham'  ? 'lbr'
+         : 'unit';
   }
 
   function formatQty(category, qty) {

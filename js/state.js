@@ -8,7 +8,7 @@
   const JI = global.JI || (global.JI = {});
 
   const STORAGE_KEY = 'juragan_investasi_state_v1';
-  const STATE_VERSION = 3; // Phase 3
+  const STATE_VERSION = 4; // Phase 4
   const STARTING_CAPITAL = 150_000_000; // Rp 150jt
   const DAILY_OPS_COST  = 150_000;      // Rp 150rb / day
 
@@ -104,6 +104,21 @@
         losingSells: 0,
       },
 
+      // Phase 4
+      vc: {
+        activeStartups: [],   // [{id, name, sector, seekingAmount, ...}]
+        lastRotationDay: 0,
+        investments: [],      // [{id, startupId, amount, openedDay, maturityDay, lockDays, fromBankId}]
+        maturedHistory: [],   // [{startupName, outcome, multiplier, originalAmount, payout, day}]
+      },
+      ipo: {
+        isPublic: false,
+        ipoDay: null,
+        lastDividendDay: null,
+      },
+      eventHistory: [],            // Black Swan log
+      activeEventModifier: null,   // {eventId, day, title, severity} — set the day a Black Swan fires
+
       // Bookkeeping for the day-loop
       lastMonthProcessed: 0,     // last "month index" for which monthly ops ran
 
@@ -140,12 +155,14 @@
   }
 
   /* ---------- Net worth recompute ----------
-     Phase 2 scope:
-       liquid     = bank balances
-       portfolio  = sum(qty * currentMarketPrice)
-       physical   = sum(value of properties + cars + motorcycles)
-       debts      = active loan remaining + credit-card used
-     netWorth    = liquid + portfolio + physical − debts
+     Phase 4 scope:
+       liquid           = bank balances
+       portfolio        = sum(qty * currentMarketPrice)
+       physical         = sum(properties + cars + motorcycles)
+       depositoLocked   = sum(active deposito principal — locked but still ours)
+       vcAtRisk         = sum(active VC investment principal)
+       debts            = active loan remaining + credit-card used
+     netWorth = liquid + portfolio + physical + depositoLocked + vcAtRisk − debts
   */
   function recomputeNetWorth(state) {
     const banks = state.banks || [];
@@ -154,6 +171,10 @@
       (a, b) => a + (b.loan && b.loan.isActive ? b.loan.remaining : 0), 0);
     const ccDebt = banks.reduce(
       (a, b) => a + (b.creditCard ? b.creditCard.used || 0 : 0), 0);
+    const depositoLocked = banks.reduce(
+      (a, b) => a + ((b.depositos || []).reduce(
+        (x, d) => x + (d.isMatured ? 0 : (d.principal || 0)), 0)),
+      0);
 
     const portfolio = state.portfolio || [];
     const market = state.marketAssets || {};
@@ -168,7 +189,13 @@
     const physicalValue =
       sumValue(phys.properties) + sumValue(phys.cars) + sumValue(phys.motorcycles);
 
-    state.totalNetWorth = bankSum + portfolioValue + physicalValue - loanDebt - ccDebt;
+    const vcAtRisk = (state.vc && Array.isArray(state.vc.investments))
+      ? state.vc.investments.reduce((a, i) => a + (i.amount || 0), 0)
+      : 0;
+
+    state.totalNetWorth =
+      bankSum + portfolioValue + physicalValue + depositoLocked + vcAtRisk
+      - loanDebt - ccDebt;
     return state.totalNetWorth;
   }
 
@@ -225,6 +252,25 @@
     state.hiredEmployees = state.hiredEmployees || [];
     state.brokerStats    = state.brokerStats    || def.brokerStats;
     if (typeof state.lastMonthProcessed !== 'number') state.lastMonthProcessed = 0;
+
+    // Phase 4 fields
+    state.vc           = state.vc           || def.vc;
+    state.vc.activeStartups   = state.vc.activeStartups   || [];
+    state.vc.investments      = state.vc.investments      || [];
+    state.vc.maturedHistory   = state.vc.maturedHistory   || [];
+    if (typeof state.vc.lastRotationDay !== 'number') state.vc.lastRotationDay = 0;
+
+    state.ipo          = state.ipo          || def.ipo;
+    if (typeof state.ipo.isPublic !== 'boolean') state.ipo.isPublic = false;
+
+    state.eventHistory = state.eventHistory || [];
+    if (state.activeEventModifier === undefined) state.activeEventModifier = null;
+
+    // Bank-level Phase 4 fields
+    (state.banks || []).forEach(b => {
+      if (!Array.isArray(b.history))   b.history = [];
+      if (!Array.isArray(b.depositos)) b.depositos = [];
+    });
 
     state.version = STATE_VERSION;
     return state;

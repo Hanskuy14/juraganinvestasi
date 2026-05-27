@@ -93,6 +93,27 @@
   const PROPERTY_APPRECIATION = JI.PROPERTY_APPRECIATION || 0.01;
 
   /* =========================================================================
+     PHASE 4 — Property passive income.
+     Every 30 days (month change), unused office slots generate
+     Rp 5.000.000 each via "Sewa Ruangan", deposited to a random bank.
+     ========================================================================= */
+  const PASSIVE_RENT_PER_SLOT = 5_000_000;
+
+  function payRentalIncome(state) {
+    const cap = (state.physicalAssets && state.physicalAssets.officeCapacity) || 0;
+    const occupied = (state.hiredEmployees || []).length;
+    const slots = Math.max(0, cap - occupied);
+    if (slots <= 0) return null;
+    const total = slots * PASSIVE_RENT_PER_SLOT;
+    const bankId = JI.pickRandomBankId(state);
+    if (!bankId) return null;
+    const bank = JI.getBank(state, bankId);
+    JI.bankCredit(state, bankId, total,
+      `Sewa Ruangan: ${slots} slot kosong × ${JI.formatIDR(PASSIVE_RENT_PER_SLOT)}`);
+    return { bankId, bankShortName: bank ? bank.shortName : bankId, slots, total };
+  }
+
+  /* =========================================================================
      ADVANCE DAY orchestrator
      ========================================================================= */
   let _advancing = false;
@@ -167,8 +188,50 @@
 
       // (e) News + market step + tax penalties -----------------------------
       const news = JI.generateDailyNews(s);
-      const impactMap = JI.buildImpactMap(news);
-      JI.calculateNextDayPrices(s, impactMap);
+
+      // Phase 4: Black Swan roll BEFORE the price step. If it fires, mark
+      // activeEventModifier and skip the news-driven price update for the
+      // day (per spec: events override standard daily news multipliers).
+      const bsEvent = JI.rollBlackSwan ? JI.rollBlackSwan(s) : null;
+      if (bsEvent) {
+        events.push({ kind: 'blackswan', title: bsEvent.title, severity: bsEvent.severity });
+      }
+
+      if (!bsEvent) {
+        const impactMap = JI.buildImpactMap(news);
+        JI.calculateNextDayPrices(s, impactMap);
+      } else {
+        // Clear the modifier flag — its only purpose was to gate today's drift.
+        s.activeEventModifier = null;
+      }
+
+      // Phase 4: VC investment maturity tick
+      if (JI.tickVCInvestments) {
+        const maturedVC = JI.tickVCInvestments(s);
+        maturedVC.forEach(m => events.push({ kind: 'vc-matured', record: m }));
+      }
+
+      // Phase 4: Deposito maturity tick
+      if (JI.tickDepositos) {
+        const maturedDep = JI.tickDepositos(s);
+        maturedDep.forEach(m => events.push({ kind: 'deposito-matured', record: m }));
+      }
+
+      // Phase 4: IPO dividend tick (post-IPO every 360 days)
+      if (JI.tickIPODividend) {
+        const dividend = JI.tickIPODividend(s);
+        if (dividend) events.push({ kind: 'ipo-dividend', record: dividend });
+      }
+
+      // Phase 4: Monthly passive rental income from unused office slots
+      if (isMonthChange) {
+        const rental = payRentalIncome(s);
+        if (rental) events.push({ kind: 'rental-income', record: rental });
+      }
+
+      // Phase 4: VC active-startup rotation (every 30 days, independent of
+      // calendar month boundary)
+      if (JI.maybeRotateVC) JI.maybeRotateVC(s);
 
       // Tax penalties (after market move, after day increment)
       const penEvents = JI.applyDailyPenalties(s);
@@ -263,6 +326,43 @@
         case 'tax-penalty':
           JI.toast(`⚠ Denda pajak: ${JI.formatIDR(ev.total)} (${ev.count} tagihan terlambat).`, 'error', 4000);
           break;
+        case 'blackswan':
+          JI.toast(`☣ BLACK SWAN: ${ev.title}`, ev.severity === 'green' ? 'success' : 'error', 5000);
+          break;
+        case 'vc-matured': {
+          const m = ev.record;
+          if (m.outcome === 'Bankrupt') {
+            JI.toast(`❌ ${m.startupName} BANGKRUT. Investasi ${JI.formatIDR(m.originalAmount)} hilang.`, 'error', 6000);
+          } else if (m.outcome === 'Acquisition') {
+            JI.toast(`🎯 ${m.startupName} di-AKUISISI! ${m.multiplier}× → ${JI.formatIDR(m.payout)}`, 'success', 6000);
+          } else if (m.outcome === 'Unicorn IPO') {
+            JI.toast(`🦄 ${m.startupName} jadi UNICORN IPO! ${m.multiplier}× → ${JI.formatIDR(m.payout)}`, 'success', 7000);
+          }
+          break;
+        }
+        case 'deposito-matured': {
+          const d = ev.record;
+          JI.toast(
+            `💰 Deposito ${d.months} bulan jatuh tempo di ${d.bankShortName}: +${JI.formatIDR(d.interest)} bunga.`,
+            'success', 5000);
+          break;
+        }
+        case 'ipo-dividend': {
+          const r = ev.record;
+          if (r.demoted) {
+            JI.toast(`⚠ Dividen Publik gagal dibayar penuh (kurang ${JI.formatIDR(r.shortfall)}). Level perusahaan turun.`, 'error', 7000);
+          } else {
+            JI.toast(`📢 Dividen Publik tahunan dibayar: ${JI.formatIDR(r.paid)} (5% NW).`, 'info', 5500);
+          }
+          break;
+        }
+        case 'rental-income': {
+          const r = ev.record;
+          JI.toast(
+            `🏢 Sewa Ruangan: +${JI.formatIDR(r.total)} masuk ke ${r.bankShortName} (${r.slots} slot kosong).`,
+            'success', 5000);
+          break;
+        }
       }
     });
   }
@@ -315,6 +415,7 @@
     // Re-init market shape if missing tickers (catalog might have grown).
     JI.initMarket(JI.gameState);
     JI.recomputeOfficeCapacity(JI.gameState);
+    if (JI.maybeRotateVC) JI.maybeRotateVC(JI.gameState);
     JI.recomputeNetWorth(JI.gameState);
     JI.renderAll();
     JI.toast('Game dimuat ulang dari localStorage.', 'info', 2500);
@@ -333,6 +434,7 @@
     JI.initBanks(JI.gameState);
     JI.initMarket(JI.gameState);
     JI.recomputeOfficeCapacity(JI.gameState);
+    if (JI.maybeRotateVC) JI.maybeRotateVC(JI.gameState);
     JI.recomputeNetWorth(JI.gameState);
     JI.saveState(JI.gameState);
     JI.gameState.activeTab = 'home';
@@ -348,6 +450,7 @@
     JI.initBanks(JI.gameState);
     JI.initMarket(JI.gameState);
     JI.recomputeOfficeCapacity(JI.gameState);
+    if (JI.maybeRotateVC) JI.maybeRotateVC(JI.gameState);
     JI.recomputeNetWorth(JI.gameState);
     JI.saveState(JI.gameState);
 
@@ -371,6 +474,9 @@
     revalueAssets,
     VEHICLE_DEPRECIATION,
     PROPERTY_APPRECIATION,
+    // Phase 4
+    PASSIVE_RENT_PER_SLOT,
+    payRentalIncome,
   });
 
   document.addEventListener('DOMContentLoaded', () => {
