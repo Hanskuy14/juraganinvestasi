@@ -9,6 +9,8 @@
 
   const STORAGE_KEY = 'juragan_investasi_state_v1';
   const STARTING_CAPITAL = 150_000_000; // Rp 150jt
+  const STATE_VERSION = 2;
+  const DEFAULT_DAILY_OPS_COST = 500_000; // Rp 500rb / hari (placeholder)
 
   /* ---------- Company titles by level ---------- */
   const COMPANY_TITLES = [
@@ -38,20 +40,36 @@
   /* ---------- Default state factory ---------- */
   function defaultState() {
     return {
-      version: 1,
+      version: STATE_VERSION,
       totalDays: 1,
       totalNetWorth: STARTING_CAPITAL,
 
       // Banks created by banking.js init when state is fresh.
       banks: [],
 
-      // Phase 2/3 placeholders
-      portfolio: [],          // {ticker, qty, avgPrice, ...}
-      newsHistory: [],        // [{day, headline, body, impact}]
-      taxLiabilities: [],     // [{day, type, amount, paid}]
-      hiredEmployees: [],     // [{id, role, salary, hiredOn}]
+      // ----- Market & Portfolio (populated by market.js) -----
+      assetPrices: {},        // ticker -> currentPrice
+      priceHistory: {},       // ticker -> [last 60 closes]
+      portfolio: [],          // [{ticker, qty, avgPrice}]
+
+      // ----- News -----
+      newsHistory: [],        // [{day, ticker, headline, sentiment, category}]
+      todaysNews: [],         // shortcut to today's headlines
+
+      // ----- Random events -----
+      eventLog: [],           // [{day, id, title, type}]
+      pendingEvent: null,     // event currently waiting to be acknowledged in UI
+
+      // ----- Tax & Ops -----
+      unpaidFinalTax: 0,      // Rp; cleared by Tax Amnesty event
+      annualTax: 0,           // Rp; cleared by Tax Amnesty event
+      dailyOpsCost: DEFAULT_DAILY_OPS_COST,
+      opsCostMultiplierToday: 1, // reset every Next Day; events can spike (e.g. x5)
+
+      // ----- HRD / Aset placeholders (kept from prior phases) -----
+      hiredEmployees: [],
       physicalAssets: {
-        properties:    [],    // [{id, name, value, ...}]
+        properties:    [],
         cars:          [],
         motorcycles:   [],
         officeCapacity: 0,
@@ -67,6 +85,34 @@
         createdAt: Date.now(),
       },
     };
+  }
+
+  /* ---------- Migrations ----------
+     v1 -> v2: add Phase 5 fields without nuking the player's banks/level. */
+  function migrate(state) {
+    if (!state) return defaultState();
+    if (!state.version || state.version < 2) {
+      const fresh = defaultState();
+      const merged = {
+        ...fresh,
+        ...state,
+        // Re-add fields that may have been missing in v1.
+        assetPrices:        state.assetPrices  || {},
+        priceHistory:       state.priceHistory || {},
+        portfolio:          Array.isArray(state.portfolio) ? state.portfolio : [],
+        newsHistory:        Array.isArray(state.newsHistory) ? state.newsHistory : [],
+        todaysNews:         [],
+        eventLog:           Array.isArray(state.eventLog) ? state.eventLog : [],
+        pendingEvent:       null,
+        unpaidFinalTax:     state.unpaidFinalTax || 0,
+        annualTax:          state.annualTax || 0,
+        dailyOpsCost:       state.dailyOpsCost || DEFAULT_DAILY_OPS_COST,
+        opsCostMultiplierToday: 1,
+        version: STATE_VERSION,
+      };
+      return merged;
+    }
+    return state;
   }
 
   /* ---------- Persistence ---------- */
@@ -94,8 +140,7 @@
   }
 
   /* ---------- Net worth recompute ----------
-     Phase 1 scope: banks balance - active loan remaining.
-     (Portfolio/assets folded in during later phases.)
+     Banks balance + portfolio market value − active loan + CC debt.
   */
   function recomputeNetWorth(state) {
     const bankSum = (state.banks || []).reduce((a, b) => a + (b.balance || 0), 0);
@@ -107,7 +152,11 @@
       (a, b) => a + (b.creditCard ? b.creditCard.used || 0 : 0),
       0
     );
-    state.totalNetWorth = bankSum - loanDebt - ccDebt;
+    const portfolioValue = (state.portfolio || []).reduce((a, p) => {
+      const px = (state.assetPrices || {})[p.ticker] || 0;
+      return a + px * (p.qty || 0);
+    }, 0);
+    state.totalNetWorth = bankSum + portfolioValue - loanDebt - ccDebt;
     return state.totalNetWorth;
   }
 
@@ -127,8 +176,10 @@
   /* ---------- Bootstrap ---------- */
   function initState() {
     let state = loadState();
-    if (!state || state.version !== 1) {
+    if (!state) {
       state = defaultState();
+    } else {
+      state = migrate(state);
     }
     JI.gameState = state;
     return state;
@@ -137,10 +188,13 @@
   /* ---------- Expose ---------- */
   Object.assign(JI, {
     STARTING_CAPITAL,
+    STATE_VERSION,
+    DEFAULT_DAILY_OPS_COST,
     COMPANY_TITLES,
     xpToNext,
     getCompanyTitle,
     defaultState,
+    migrate,
     loadState,
     saveState,
     resetState,

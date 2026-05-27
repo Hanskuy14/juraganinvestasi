@@ -48,6 +48,8 @@
     // 1. Init state and banks
     JI.initState();
     JI.initBanks(JI.gameState);
+    // Phase 5: ensure the 45 hardcoded asset prices are seeded.
+    if (typeof JI.seedMarket === 'function') JI.seedMarket(JI.gameState);
     JI.recomputeNetWorth(JI.gameState);
     JI.saveState(JI.gameState);
 
