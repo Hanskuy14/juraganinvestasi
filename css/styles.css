@@ -405,3 +405,108 @@ input[type=number] { -moz-appearance: textfield; }
   background: linear-gradient(90deg, transparent, rgba(15,23,42,0.05));
   border-radius: 4px;
 }
+
+
+
+/* ==========================================================================
+   Phase 3 — Game loop, level-up, HRD, CoreTax, single-file polish
+   ========================================================================== */
+
+/* ---------- Day-loop loading overlay ---------- */
+#day-loading-overlay {
+  animation: dayOverlayIn 0.18s ease-out;
+}
+@keyframes dayOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.loading-spinner {
+  width: 64px; height: 64px;
+  border: 4px solid rgba(255,255,255,0.08);
+  border-top-color: #34d399;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Tier pill on Home hero ---------- */
+.tier-pill {
+  background: linear-gradient(135deg, rgba(52, 211, 153, 0.18), rgba(20, 184, 166, 0.10));
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: #ecfdf5;
+  padding: 0.5rem 0.85rem;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+
+/* ---------- Level-up modal ---------- */
+.levelup-card {
+  background: linear-gradient(135deg, #0b1220 0%, #14532d 50%, #0b1220 100%);
+  border: 2px solid rgba(52, 211, 153, 0.45);
+  position: relative;
+  overflow: hidden;
+}
+.levelup-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(52, 211, 153, 0.30), transparent 60%);
+  pointer-events: none;
+}
+.levelup-burst {
+  display: inline-block;
+  animation: burst 1.6s ease-out infinite;
+  filter: drop-shadow(0 6px 14px rgba(52, 211, 153, 0.55));
+}
+@keyframes burst {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  35%      { transform: scale(1.2) rotate(-6deg); }
+  70%      { transform: scale(0.95) rotate(4deg); }
+}
+
+/* ---------- HRD role / tier cards ---------- */
+.hrd-tier-active {
+  border-color: #34d399 !important;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.12);
+}
+
+/* ---------- CoreTax overdue rows ---------- */
+.tax-overdue {
+  background: linear-gradient(135deg, #fff7ed, #fef2f2);
+  border-color: #fdba74;
+}
+.tax-penalty-active {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  border-color: #fca5a5;
+}
+
+/* ---------- Reset Game button — emphasized warning style ---------- */
+.ji-btn.danger {
+  background: #e11d48;
+  color: #fff;
+}
+.ji-btn.danger:hover:not(:disabled) {
+  background: #be123c;
+}
+
+/* ---------- Prediction badge on Market tickers ---------- */
+.predict-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  border-radius: 0.35rem;
+  margin-left: 0.4rem;
+}
+.predict-up   { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.predict-down { background: rgba(244, 63, 94, 0.12);  color: #be123c; }
+
+/* ---------- Mobile tweaks ---------- */
+@media (max-width: 640px) {
+  .levelup-card { padding: 1.5rem; }
+  #day-loading-overlay .loading-spinner {
+    width: 52px; height: 52px;
+  }
+  .tier-pill { font-size: 0.75rem; padding: 0.4rem 0.65rem; }
+}
