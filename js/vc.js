@@ -143,7 +143,7 @@
     state.vc.investments.push(inv);
 
     JI.recomputeNetWorth(state);
-    JI.awardXP(state, Math.min(200, Math.floor(amt / 5_000_000)));
+    // Phase 5: no XP from opening VC investment.
     return { ok: true, investment: inv };
   }
 
@@ -201,8 +201,7 @@
 
         matured.push(record);
 
-        if (outcome.kind === 'Unicorn IPO')      JI.awardXP(state, 1500);
-        else if (outcome.kind === 'Acquisition') JI.awardXP(state, 400);
+        // Phase 5: no XP from VC outcomes.
       } else {
         remaining.push(inv);
       }

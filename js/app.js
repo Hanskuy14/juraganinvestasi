@@ -243,12 +243,9 @@
         });
       }
 
-      // XP for surviving another day of operations
-      const dailyXP = JI.awardXP(s, 30);
-      // Catch level-up triggered by daily survival XP.
-      if (dailyXP && dailyXP.leveledUp) {
-        showLevelUpAlert(dailyXP.newLevel, dailyXP.newTitle, dailyXP.levelsGained);
-      }
+      // Phase 5: NO passive XP from the day loop. companyXP MUST only be
+      // awarded inside sellAsset() on profitable sells (and the rare
+      // "Diundang ke Podcast Deddy" event handled in blackswan.js).
 
       // Final NW + persist
       JI.recomputeNetWorth(s);
