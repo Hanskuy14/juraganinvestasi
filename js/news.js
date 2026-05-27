@@ -439,6 +439,12 @@
       const moodIcon = sentiment === 'bullish' ? '🚀' : '🩸';
       // Soft target so HRD prediction & macro buildImpactMap also see it.
       const softImpact = sentiment === 'bullish' ? 0.6 : -0.6;
+
+      /* Phase 6 — pre-roll the EXACT multiplier this headline will deliver.
+         Pinning the random pct here (instead of at apply time) means the
+         player can read today's news and KNOW tomorrow's move is locked. */
+      const [lo, hi] = range;
+      const multiplier = lo + Math.random() * (hi - lo); // signed pct
       return {
         day,
         sourceId: `asset-${asset.ticker}-${sentiment}`,
@@ -448,13 +454,18 @@
         headline,
         body: `${asset.name} (${asset.ticker}) — ${sentiment === 'bullish' ? 'sentimen positif memicu lonjakan minat beli.' : 'sentimen negatif memicu aksi jual investor.'}`,
         targets: [{ scope: `asset:${asset.ticker}`, impact: softImpact }],
-        // Phase 5: explicit instant spike applied AFTER random walk.
+        // Phase 6: pre-rolled multiplier (decimal, e.g. +0.123 = +12.3%).
+        // app.js advanceDay() pushes this into state.pendingNewsEffects so
+        // the price impact lands on the NEXT calculateNextDayPrices() call.
+        multiplier,
+        // Kept for backwards compat / UI labeling.
         assetSpike: {
           ticker: asset.ticker,
           name: asset.name,
           category: asset.category,
           sentiment,
           range,
+          multiplier,
         },
       };
     });
@@ -514,6 +525,31 @@
     return map;
   }
 
+  /**
+   * Phase 6 — push every asset-targeted news multiplier into the queue
+   * that will be drained by the NEXT calculateNextDayPrices() call.
+   * Skips items without a numeric multiplier (e.g. macro headlines).
+   */
+  function queueNewsEffects(state, newsItems) {
+    if (!state) return [];
+    state.pendingNewsEffects = state.pendingNewsEffects || [];
+    const queued = [];
+    (newsItems || []).forEach(n => {
+      if (!n || typeof n.multiplier !== 'number' || !isFinite(n.multiplier)) return;
+      const ticker = n.assetSpike && n.assetSpike.ticker;
+      if (!ticker) return;
+      // Avoid duplicate goreng entries — those are queued by gorengSaham().
+      if (n.isGoreng) return;
+      state.pendingNewsEffects.push({
+        ticker,
+        multiplier: n.multiplier,
+        source: 'news',
+      });
+      queued.push({ ticker, multiplier: n.multiplier });
+    });
+    return queued;
+  }
+
   /* ---------- Expose ---------- */
   Object.assign(JI, {
     NEWS_POOL,
@@ -523,5 +559,6 @@
     generateAssetNews,
     pickAssetHeadline,
     buildImpactMap,
+    queueNewsEffects,
   });
 })(window);

@@ -8,7 +8,7 @@
   const JI = global.JI || (global.JI = {});
 
   const STORAGE_KEY = 'juragan_investasi_state_v1';
-  const STATE_VERSION = 4; // Phase 4
+  const STATE_VERSION = 5; // Phase 6
   const STARTING_CAPITAL = 150_000_000; // Rp 150jt
   const DAILY_OPS_COST  = 150_000;      // Rp 150rb / day
 
@@ -71,6 +71,10 @@
       newsHistory: [],           // [{day, headline, body, targets}]
       dailyNews: [],             // current day's news (subset of newsHistory)
       lastNewsDay: 0,
+      // Phase 6: news generated TODAY queues effects here; effects are
+      // applied at the START of the NEXT calculateNextDayPrices() call.
+      // Shape: [{ ticker, multiplier, source: 'news'|'goreng' }]
+      pendingNewsEffects: [],
 
       // Tax (Phase 3)
       taxLiabilities: [],        // [{id, type, baseAmount, owedAmount, dueDay, paid, paidDay, createdDay}]
@@ -89,6 +93,8 @@
         cars:          [],
         motorcycles:   [],
         officeCapacity: 0,
+        // Phase 6: Mega Infrastruktur ownership counts (qty per type)
+        infrastructure: { spbu: 0, garment: 0, hotel: 0, rsi: 0, tol: 0 },
       },
 
       // Company progression
@@ -162,7 +168,9 @@
        depositoLocked   = sum(active deposito principal — locked but still ours)
        vcAtRisk         = sum(active VC investment principal)
        debts            = active loan remaining + credit-card used
-     netWorth = liquid + portfolio + physical + depositoLocked + vcAtRisk − debts
+     Phase 6 addition: + Mega Infrastruktur book value.
+     netWorth = liquid + portfolio + physical + infrastructure
+              + depositoLocked + vcAtRisk − debts
   */
   function recomputeNetWorth(state) {
     const banks = state.banks || [];
@@ -189,12 +197,17 @@
     const physicalValue =
       sumValue(phys.properties) + sumValue(phys.cars) + sumValue(phys.motorcycles);
 
+    // Phase 6: book value of Mega Infrastruktur (delegated to aset.js if loaded).
+    const infraValue = (typeof JI.totalInfrastructureValue === 'function')
+      ? JI.totalInfrastructureValue(state)
+      : 0;
+
     const vcAtRisk = (state.vc && Array.isArray(state.vc.investments))
       ? state.vc.investments.reduce((a, i) => a + (i.amount || 0), 0)
       : 0;
 
     state.totalNetWorth =
-      bankSum + portfolioValue + physicalValue + depositoLocked + vcAtRisk
+      bankSum + portfolioValue + physicalValue + infraValue + depositoLocked + vcAtRisk
       - loanDebt - ccDebt;
     return state.totalNetWorth;
   }
@@ -271,6 +284,22 @@
       if (!Array.isArray(b.history))   b.history = [];
       if (!Array.isArray(b.depositos)) b.depositos = [];
     });
+
+    // Phase 6 fields (v4 -> v5): delayed news queue + Mega Infrastruktur counts.
+    if (!Array.isArray(state.pendingNewsEffects)) state.pendingNewsEffects = [];
+    state.physicalAssets = state.physicalAssets || def.physicalAssets;
+    if (!state.physicalAssets.infrastructure ||
+        typeof state.physicalAssets.infrastructure !== 'object') {
+      state.physicalAssets.infrastructure = {
+        spbu: 0, garment: 0, hotel: 0, rsi: 0, tol: 0,
+      };
+    } else {
+      ['spbu', 'garment', 'hotel', 'rsi', 'tol'].forEach(k => {
+        if (state.physicalAssets.infrastructure[k] == null) {
+          state.physicalAssets.infrastructure[k] = 0;
+        }
+      });
+    }
 
     state.version = STATE_VERSION;
     return state;

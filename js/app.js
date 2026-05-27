@@ -187,22 +187,45 @@
       }
 
       // (e) News + market step + tax penalties -----------------------------
-      const news = JI.generateDailyNews(s);
+      // Phase 6 — DELAYED NEWS: today's headlines drive TOMORROW's prices.
+      // Order:
+      //   1. Apply YESTERDAY's queued multipliers (consumed inside
+      //      calculateNextDayPrices via state.pendingNewsEffects) and
+      //      random-walk the rest. Black Swan still gates the walk for the
+      //      day if it fires.
+      //   2. Generate TODAY's news + queue its multipliers for tomorrow.
 
       // Phase 4: Black Swan roll BEFORE the price step. If it fires, mark
-      // activeEventModifier and skip the news-driven price update for the
-      // day (per spec: events override standard daily news multipliers).
+      // activeEventModifier and skip the regular price update for the day.
       const bsEvent = JI.rollBlackSwan ? JI.rollBlackSwan(s) : null;
       if (bsEvent) {
         events.push({ kind: 'blackswan', title: bsEvent.title, severity: bsEvent.severity });
       }
 
       if (!bsEvent) {
-        const impactMap = JI.buildImpactMap(news);
-        JI.calculateNextDayPrices(s, impactMap);
+        // Empty impact map — Phase 6 keeps news impact OUT of today's drift.
+        // Yesterday's queued multipliers are consumed inside the call.
+        JI.calculateNextDayPrices(s, {});
       } else {
-        // Clear the modifier flag — its only purpose was to gate today's drift.
+        // Black Swan replaces today's drift; flush any queued news effects
+        // so they don't double up tomorrow.
+        s.pendingNewsEffects = [];
         s.activeEventModifier = null;
+      }
+
+      // Generate TODAY's news AFTER the price step.
+      const news = JI.generateDailyNews(s);
+      // Queue today's pre-rolled multipliers so they land tomorrow.
+      if (typeof JI.queueNewsEffects === 'function') {
+        JI.queueNewsEffects(s, news);
+      }
+
+      // Phase 6: Mega Infrastruktur passive daily income.
+      if (typeof JI.injectInfrastructureIncome === 'function') {
+        const infra = JI.injectInfrastructureIncome(s);
+        if (infra && infra.total > 0) {
+          events.push({ kind: 'infra-income', record: infra });
+        }
       }
 
       // Phase 4: VC investment maturity tick
@@ -360,6 +383,17 @@
             'success', 5000);
           break;
         }
+        case 'infra-income': {
+          const r = ev.record;
+          const items = (r.breakdown || [])
+            .map(b => `${b.name} ×${b.qty}`)
+            .join(', ');
+          JI.toast(
+            `🏗 Sektor Riil: +${JI.formatIDR(r.total)} masuk ke ${r.bankName}` +
+            (items ? ` (${items}).` : '.'),
+            'success', 5000);
+          break;
+        }
       }
     });
   }
@@ -413,6 +447,7 @@
     JI.initMarket(JI.gameState);
     JI.recomputeOfficeCapacity(JI.gameState);
     if (JI.maybeRotateVC) JI.maybeRotateVC(JI.gameState);
+    if (typeof JI.ensureInfraState === 'function') JI.ensureInfraState(JI.gameState);
     JI.recomputeNetWorth(JI.gameState);
     JI.renderAll();
     JI.toast('Game dimuat ulang dari localStorage.', 'info', 2500);
@@ -432,6 +467,8 @@
     JI.initMarket(JI.gameState);
     JI.recomputeOfficeCapacity(JI.gameState);
     if (JI.maybeRotateVC) JI.maybeRotateVC(JI.gameState);
+    if (typeof JI.ensureInfraState === 'function') JI.ensureInfraState(JI.gameState);
+    seedInitialNewsIfNeeded(JI.gameState);
     JI.recomputeNetWorth(JI.gameState);
     JI.saveState(JI.gameState);
     JI.gameState.activeTab = 'home';
@@ -448,6 +485,13 @@
     JI.initMarket(JI.gameState);
     JI.recomputeOfficeCapacity(JI.gameState);
     if (JI.maybeRotateVC) JI.maybeRotateVC(JI.gameState);
+    // Phase 6: ensure Mega Infrastruktur state shape exists.
+    if (typeof JI.ensureInfraState === 'function') JI.ensureInfraState(JI.gameState);
+    // Phase 6: seed Day-1 news so the player has headlines to read on Day 1
+    // while their price effects sit in pendingNewsEffects and only land when
+    // the player clicks "Next Day →" (= Day 2). Enforces the delayed-effect
+    // rule even on a brand new game.
+    seedInitialNewsIfNeeded(JI.gameState);
     JI.recomputeNetWorth(JI.gameState);
     JI.saveState(JI.gameState);
 
@@ -457,6 +501,22 @@
 
     // Periodic header refresh (clock).
     setInterval(JI.renderHeader, 30_000);
+  }
+
+  /* Phase 6 helper — only seeds news if the day has none yet. Idempotent
+     across reloads; safe even when migrating an existing v4 save. */
+  function seedInitialNewsIfNeeded(state) {
+    if (!state) return;
+    if (typeof JI.generateDailyNews !== 'function') return;
+    const noTodaysNews = !state.dailyNews || state.dailyNews.length === 0;
+    const noPendingFx  = !state.pendingNewsEffects || state.pendingNewsEffects.length === 0;
+    const noHistoryToday = !(state.newsHistory || []).some(n => n.day === state.totalDays);
+    if (!(noTodaysNews && noPendingFx && noHistoryToday)) return;
+
+    const news = JI.generateDailyNews(state) || [];
+    if (typeof JI.queueNewsEffects === 'function') {
+      JI.queueNewsEffects(state, news);
+    }
   }
 
   /* ---------- Expose ---------- */

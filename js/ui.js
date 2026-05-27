@@ -790,11 +790,19 @@
         JI.el('span', {}, pred.direction === 'up' ? '▲' : '▼'),
         JI.el('span', { class: 'ml-1' }, `#${pred.rank}`),
       ]) : null;
+      // Phase 6: ownership badge for Local Stocks.
+      const ownPct = JI.ownershipPct ? JI.ownershipPct(s, a.ticker) : 0;
+      const isBd   = JI.isBandar     ? JI.isBandar(s, a.ticker)     : false;
+      const ownBadge = (a.category === 'saham' && a.outstandingShares && ownPct > 0) ? JI.el('span', {
+        class: `ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${isBd ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`,
+        title: isBd ? 'Pemegang Saham Pengendali (Bandar)' : 'Kepemilikan',
+      }, `${isBd ? '👑 ' : ''}${(ownPct * 100).toFixed(1)}%`) : null;
       tbody.appendChild(JI.el('tr', { class: 'border-t border-slate-100 hover:bg-slate-50' }, [
         JI.el('td', { class: 'px-4 py-3' }, [
-          JI.el('div', { class: 'font-bold font-mono flex items-center' }, [
+          JI.el('div', { class: 'font-bold font-mono flex items-center flex-wrap' }, [
             JI.el('span', {}, a.ticker),
             predBadge,
+            ownBadge,
           ]),
           JI.el('div', { class: 'text-xs text-slate-500' }, a.name),
         ]),
@@ -839,12 +847,20 @@
       JI.el('span', {}, pred.direction === 'up' ? '▲' : '▼'),
       JI.el('span', { class: 'ml-1' }, `#${pred.rank}`),
     ]) : null;
+    // Phase 6: ownership badge for Local Stocks.
+    const ownPct = JI.ownershipPct ? JI.ownershipPct(s, a.ticker) : 0;
+    const isBd   = JI.isBandar     ? JI.isBandar(s, a.ticker)     : false;
+    const ownBadge = (a.category === 'saham' && a.outstandingShares && ownPct > 0) ? JI.el('span', {
+      class: `ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${isBd ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`,
+      title: isBd ? 'Pemegang Saham Pengendali (Bandar)' : 'Kepemilikan',
+    }, `${isBd ? '👑 ' : ''}${(ownPct * 100).toFixed(1)}%`) : null;
     return JI.el('div', { class: 'ji-card p-4' }, [
       JI.el('div', { class: 'flex items-center justify-between gap-3' }, [
         JI.el('div', {}, [
-          JI.el('p', { class: 'font-bold font-mono flex items-center' }, [
+          JI.el('p', { class: 'font-bold font-mono flex items-center flex-wrap' }, [
             JI.el('span', {}, a.ticker),
             predBadge,
+            ownBadge,
           ]),
           JI.el('p', { class: 'text-xs text-slate-500' }, a.name),
         ]),
@@ -999,9 +1015,31 @@
       const hPnl = value - h.totalCost;
       const hPct = h.totalCost > 0 ? (hPnl / h.totalCost) * 100 : 0;
       const cls = hPnl >= 0 ? 'text-emerald-600' : 'text-rose-600';
+      // Phase 6 — Bandar status & Goreng Saham availability for Local Stocks.
+      const isStock = h.category === 'saham';
+      const ownPct = (isStock && JI.ownershipPct) ? JI.ownershipPct(s, h.ticker) : 0;
+      const isBd   = (isStock && JI.isBandar)     ? JI.isBandar(s, h.ticker)     : false;
+      const ownBadge = (isStock && ownPct > 0) ? JI.el('span', {
+        class: `ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${isBd ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`,
+        title: isBd ? 'Pemegang Saham Pengendali (Bandar)' : 'Kepemilikan',
+      }, `${isBd ? '👑 ' : ''}${(ownPct * 100).toFixed(1)}%`) : null;
+      const actions = JI.el('div', { class: 'flex flex-wrap gap-1 justify-end' }, [
+        JI.el('button', {
+          class: 'ji-btn ji-btn-warning !py-1 !px-3 !text-xs',
+          onclick: () => openSellAssetModal(h.ticker),
+        }, 'Sell'),
+        isBd ? JI.el('button', {
+          class: 'ji-btn !py-1 !px-3 !text-xs !bg-amber-600 !text-white hover:!bg-amber-700',
+          onclick: () => openGorengModal(h.ticker),
+          title: 'Goreng Saham — guaranteed +40% next day',
+        }, '🚨 Goreng') : null,
+      ]);
       tbody.appendChild(JI.el('tr', { class: 'border-t border-slate-100 hover:bg-slate-50' }, [
         JI.el('td', { class: 'px-4 py-3' }, [
-          JI.el('div', { class: 'font-bold font-mono' }, h.ticker),
+          JI.el('div', { class: 'font-bold font-mono flex items-center flex-wrap' }, [
+            JI.el('span', {}, h.ticker),
+            ownBadge,
+          ]),
           JI.el('div', { class: 'text-xs text-slate-500' }, h.name),
         ]),
         JI.el('td', { class: 'px-4 py-3 text-right font-mono' }, JI.formatQty(h.category, h.qty)),
@@ -1010,12 +1048,7 @@
         JI.el('td', { class: 'px-4 py-3 text-right font-mono' }, JI.formatIDR(value)),
         JI.el('td', { class: `px-4 py-3 text-right font-mono ${cls}` },
           `${hPnl >= 0 ? '+' : ''}${JI.formatIDR(hPnl)} (${hPct.toFixed(2)}%)`),
-        JI.el('td', { class: 'px-4 py-3 text-right' }, [
-          JI.el('button', {
-            class: 'ji-btn ji-btn-warning !py-1 !px-3 !text-xs',
-            onclick: () => openSellAssetModal(h.ticker),
-          }, 'Sell'),
-        ]),
+        JI.el('td', { class: 'px-4 py-3 text-right' }, [actions]),
       ]));
     });
     table.appendChild(tbody);
@@ -1030,16 +1063,31 @@
       const value = m.price * h.qty;
       const hPnl = value - h.totalCost;
       const cls = hPnl >= 0 ? 'text-emerald-600' : 'text-rose-600';
+      const isStock = h.category === 'saham';
+      const ownPct = (isStock && JI.ownershipPct) ? JI.ownershipPct(s, h.ticker) : 0;
+      const isBd   = (isStock && JI.isBandar)     ? JI.isBandar(s, h.ticker)     : false;
+      const ownBadge = (isStock && ownPct > 0) ? JI.el('span', {
+        class: `ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${isBd ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`,
+      }, `${isBd ? '👑 ' : ''}${(ownPct * 100).toFixed(1)}%`) : null;
       mob.appendChild(JI.el('div', { class: 'ji-card p-4' }, [
         JI.el('div', { class: 'flex items-center justify-between' }, [
           JI.el('div', {}, [
-            JI.el('p', { class: 'font-bold font-mono' }, h.ticker),
+            JI.el('p', { class: 'font-bold font-mono flex items-center flex-wrap' }, [
+              JI.el('span', {}, h.ticker),
+              ownBadge,
+            ]),
             JI.el('p', { class: 'text-xs text-slate-500' }, h.name),
           ]),
-          JI.el('button', {
-            class: 'ji-btn ji-btn-warning !text-xs',
-            onclick: () => openSellAssetModal(h.ticker),
-          }, 'Sell'),
+          JI.el('div', { class: 'flex flex-wrap gap-1 justify-end' }, [
+            JI.el('button', {
+              class: 'ji-btn ji-btn-warning !text-xs',
+              onclick: () => openSellAssetModal(h.ticker),
+            }, 'Sell'),
+            isBd ? JI.el('button', {
+              class: 'ji-btn !text-xs !bg-amber-600 !text-white hover:!bg-amber-700',
+              onclick: () => openGorengModal(h.ticker),
+            }, '🚨 Goreng') : null,
+          ]),
         ]),
         JI.el('div', { class: 'grid grid-cols-2 gap-2 mt-3 text-xs' }, [
           kv('Qty', JI.formatQty(h.category, h.qty)),
@@ -1228,6 +1276,72 @@
   }
 
   /* =========================================================================
+     PHASE 6 — Goreng Saham confirmation modal.
+     Costs Rp 5 Miliar, locks a guaranteed +40% multiplier on the next day's
+     price. Only available when player owns ≥ 50% of outstanding shares.
+     ========================================================================= */
+  function openGorengModal(ticker) {
+    const s = JI.gameState;
+    const idx = JI.getAssetDef ? JI.getAssetDef(ticker) : null;
+    if (!idx || idx.category !== 'saham') return;
+    const m = s.marketAssets[ticker];
+    if (!m) return;
+    const cost = JI.GORENG_COST || 5_000_000_000;
+    const mult = JI.GORENG_MULTIPLIER || 0.40;
+    const ownPct = JI.ownershipPct ? JI.ownershipPct(s, ticker) : 0;
+    const richest = (s.banks || []).reduce(
+      (best, b) => (best == null || b.balance > best.balance) ? b : best, null);
+    const projected = Math.round(m.price * (1 + mult));
+    const alreadyQueued = (s.pendingNewsEffects || [])
+      .some(e => e.ticker === ticker && e.source === 'goreng');
+
+    const content = JI.el('div', { class: 'space-y-4' });
+    content.appendChild(JI.el('div', { class: 'rounded-xl border border-amber-200 bg-amber-50 p-4' }, [
+      JI.el('p', { class: 'text-amber-800 font-bold text-sm' }, '👑 Anda Bandar saham ini'),
+      JI.el('p', { class: 'text-xs text-amber-700 mt-1' },
+        `Kepemilikan: ${(ownPct * 100).toFixed(1)}% dari ${idx.def.outstandingShares.toLocaleString('id-ID')} lembar.`),
+    ]));
+    content.appendChild(JI.el('div', { class: 'rounded-xl bg-slate-50 p-4 text-sm space-y-2' }, [
+      JI.el('p', {}, [
+        JI.el('span', { class: 'font-semibold' }, 'Goreng Saham '),
+        JI.el('span', { class: 'font-mono' }, ticker),
+        JI.el('span', {}, ' — operasi pump terkoordinasi.'),
+      ]),
+      JI.el('p', { class: 'text-xs text-slate-600' },
+        `Harga akan dipaksa naik tepat +${(mult * 100).toFixed(0)}% pada Next Day berikutnya. ` +
+        'Sebuah berita "leaked" juga akan muncul di feed News hari ini.'),
+      JI.el('div', { class: 'mt-2 grid grid-cols-2 gap-3' }, [
+        kv('Harga sekarang', JI.formatIDR(m.price)),
+        kv('Proyeksi besok', JI.formatIDR(projected), 'text-emerald-700 font-bold'),
+        kv('Biaya operasi', JI.formatIDR(cost), 'text-rose-700 font-bold'),
+        kv('Didebit dari', richest ? (richest.shortName || richest.name) : '—'),
+      ]),
+    ]));
+
+    if (alreadyQueued) {
+      content.appendChild(JI.el('p', { class: 'text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3' },
+        '⚠ Saham ini sudah Anda goreng untuk besok. Tunggu efeknya land dulu.'));
+    }
+
+    const btn = JI.el('button', {
+      class: 'ji-btn w-full !bg-amber-600 !text-white hover:!bg-amber-700',
+      onclick: () => {
+        if (typeof JI.gorengSaham !== 'function') return;
+        const r = JI.gorengSaham(s, ticker);
+        if (!r.ok) return JI.toast(r.error, 'error');
+        JI.toast(`🚨 Goreng ${ticker} terkoordinasi! +40% akan land besok.`, 'success', 4500);
+        closeModal();
+        JI.saveState(s);
+        JI.renderAll();
+      },
+    }, alreadyQueued ? 'Sudah Aktif (kunci)' : `Konfirmasi Goreng — ${JI.formatIDR(cost)}`);
+    if (alreadyQueued) btn.setAttribute('disabled', 'disabled');
+    content.appendChild(btn);
+
+    openModal(`🚨 Goreng Saham ${ticker}`, content);
+  }
+
+  /* =========================================================================
      NEWS panel
      ========================================================================= */
   function renderNewsPanel(panel) {
@@ -1298,19 +1412,36 @@
     panel.innerHTML = '';
 
     const totalValue = JI.totalPhysicalValue(s);
+    const infraValue = (typeof JI.totalInfrastructureValue === 'function')
+      ? JI.totalInfrastructureValue(s) : 0;
+    const infraIncome = (typeof JI.totalInfrastructureDailyIncome === 'function')
+      ? JI.totalInfrastructureDailyIncome(s) : 0;
     panel.appendChild(JI.el('div', { class: 'mb-5 flex items-end justify-between flex-wrap gap-3' }, [
       JI.el('div', {}, [
         JI.el('h2', { class: 'text-2xl sm:text-3xl font-bold' }, 'Aset Fisik'),
         JI.el('p', { class: 'text-slate-500 text-sm mt-1' },
-          'Properti kantor, mobil, dan motor — investasi nyata yang menambah net worth.'),
+          'Properti kantor, mobil, motor, dan Mega Infrastruktur — investasi nyata yang menambah net worth.'),
       ]),
       JI.el('div', { class: 'text-right' }, [
         JI.el('p', { class: 'text-[10px] uppercase tracking-wider text-slate-500' }, 'Total Aset Fisik'),
-        JI.el('p', { class: 'font-mono font-bold text-violet-600 text-lg' }, JI.formatIDR(totalValue)),
+        JI.el('p', { class: 'font-mono font-bold text-violet-600 text-lg' }, JI.formatIDR(totalValue + infraValue)),
         JI.el('p', { class: 'text-xs text-slate-500' },
           `Kapasitas Kantor: ${s.physicalAssets.officeCapacity} pegawai`),
+        infraIncome > 0 ? JI.el('p', { class: 'text-[11px] text-emerald-700 font-mono mt-0.5' },
+          `+${JI.formatIDR(infraIncome)} / hari dari Sektor Riil`) : null,
       ]),
     ]));
+
+    /* Section: Mega Infrastruktur (Sektor Riil) — Phase 6 endgame */
+    if (Array.isArray(JI.INFRASTRUCTURE_DEFS)) {
+      panel.appendChild(JI.el('h3', { class: 'text-xl font-bold mb-1 flex items-center gap-2' },
+        [JI.el('span', { class: 'text-2xl' }, '🏗'), 'Mega Infrastruktur (Sektor Riil)']));
+      panel.appendChild(JI.el('p', { class: 'text-xs text-slate-500 mb-3' },
+        'Investasi tier-miliarder yang membayar pendapatan harian otomatis. Dibayar dari rekening bank terkaya Anda.'));
+      const infraGrid = JI.el('div', { class: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8' });
+      JI.INFRASTRUCTURE_DEFS.forEach(def => infraGrid.appendChild(infrastructureCard(def)));
+      panel.appendChild(infraGrid);
+    }
 
     /* Section: Properti Kantor */
     panel.appendChild(JI.el('h3', { class: 'text-xl font-bold mb-3 flex items-center gap-2' },
@@ -1328,6 +1459,57 @@
     panel.appendChild(JI.el('h3', { class: 'text-xl font-bold mb-3 mt-6 flex items-center gap-2' },
       [JI.el('span', { class: 'text-2xl' }, '🏍️'), 'Motor']));
     JI.MOTORCYCLE_BRANDS.forEach(b => panel.appendChild(brandBlock(b, 'motorcycle')));
+  }
+
+  /* Phase 6 — Mega Infrastruktur card. Single bank-debit model: cost is
+     pulled from the richest rekening (no overdraft). Daily income lands on
+     the same bank during the next advanceDay loop. */
+  function infrastructureCard(def) {
+    const s = JI.gameState;
+    const owned = (typeof JI.infraQty === 'function') ? JI.infraQty(s, def.id) : 0;
+    const richest = (s.banks || []).reduce(
+      (best, b) => (best == null || b.balance > best.balance) ? b : best, null);
+    const richestBalance = richest ? richest.balance : 0;
+    const canAfford = richestBalance >= def.cost;
+
+    return JI.el('div', { class: 'ji-card p-5 flex flex-col' }, [
+      JI.el('div', { class: 'flex items-start justify-between' }, [
+        JI.el('div', { class: 'text-5xl' }, def.icon),
+        JI.el('span', { class: 'text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-semibold' },
+          def.tier),
+      ]),
+      JI.el('h4', { class: 'mt-3 text-lg font-bold leading-tight' }, def.name),
+      JI.el('p', { class: 'text-sm text-slate-500 mt-1' }, def.tagline),
+      JI.el('div', { class: 'mt-3 grid grid-cols-2 gap-2 text-xs' }, [
+        JI.el('div', {}, [
+          JI.el('p', { class: 'text-[10px] uppercase tracking-wider text-slate-500' }, 'Harga'),
+          JI.el('p', { class: 'font-mono font-bold text-slate-900' }, JI.formatIDR(def.cost)),
+        ]),
+        JI.el('div', {}, [
+          JI.el('p', { class: 'text-[10px] uppercase tracking-wider text-slate-500' }, 'Income / Hari'),
+          JI.el('p', { class: 'font-mono font-bold text-emerald-700' }, `+${JI.formatIDR(def.dailyIncome)}`),
+        ]),
+      ]),
+      owned > 0 ? JI.el('p', { class: 'mt-2 text-xs text-emerald-700 font-semibold' },
+        `Dimiliki: ${owned} unit · Total income: +${JI.formatIDR(owned * def.dailyIncome)} / hari`) : null,
+      JI.el('p', { class: 'mt-3 text-[11px] text-slate-500' },
+        richest
+          ? `Akan didebit dari ${richest.shortName || richest.name} (saldo ${JI.formatIDR(richestBalance)}).`
+          : 'Belum ada rekening bank.'),
+      JI.el('button', {
+        class: `ji-btn ji-btn-success w-full mt-3 ${canAfford ? '' : 'opacity-60'}`,
+        disabled: canAfford ? null : '',
+        onclick: () => {
+          if (typeof JI.buyInfrastructure !== 'function') return;
+          const r = JI.buyInfrastructure(s, def.id);
+          if (!r.ok) return JI.toast(r.error, 'error');
+          JI.toast(`🏗 ${r.name} dibeli dari ${r.bankName} (− ${JI.formatIDR(r.cost)}).`,
+            'success', 4500);
+          JI.saveState(s);
+          JI.renderAll();
+        },
+      }, canAfford ? `Beli ${JI.formatIDR(def.cost)}` : 'Saldo terkaya kurang'),
+    ]);
   }
 
   function propertyCard(p) {
@@ -2127,5 +2309,6 @@
     openSellAssetModal,
     openBuyPhysicalModal,
     openPayTaxModal,
+    openGorengModal,
   });
 })(window);
