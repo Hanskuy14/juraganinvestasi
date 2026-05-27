@@ -130,7 +130,10 @@
       return { ok: false, error: 'Nominal tidak valid.' };
     }
 
-    const charged = JI.charge(state, owed, payment);
+    const charged = JI.charge(state, owed, {
+      ...payment,
+      label: `Bayar Pajak Tahunan${liab.penaltyAccrued ? ' + denda' : ''}`,
+    });
     if (!charged.ok) return { ok: false, error: charged.error };
 
     liab.paid = owed;

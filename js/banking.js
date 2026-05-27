@@ -118,6 +118,9 @@
         daysRemaining: 0,
         startedOnDay: 0,
       },
+      // Phase 4
+      history: [],
+      depositos: [],
     };
   }
 
@@ -125,14 +128,23 @@
   function initBanks(state) {
     if (!state) return;
     if (state.banks && state.banks.length === BANK_DEFS.length) {
-      // Already initialized — just refresh tiers in case rules changed.
-      state.banks.forEach(b => (b.debitTier = debitTierFor(b.balance)));
+      // Already initialized — refresh tiers + ensure Phase 4 fields exist.
+      state.banks.forEach(b => {
+        b.debitTier = debitTierFor(b.balance);
+        if (!Array.isArray(b.history))   b.history = [];
+        if (!Array.isArray(b.depositos)) b.depositos = [];
+      });
       return;
     }
 
     const total = JI.STARTING_CAPITAL;
     const parts = JI.splitUnequal(total, BANK_DEFS.length, 5_000_000);
     state.banks = BANK_DEFS.map((def, i) => makeBank(def, parts[i]));
+
+    // Seed each bank with an opening-deposit history entry.
+    state.banks.forEach(b => {
+      recordHistory(state, b, 'IN', b.balance, 'Modal awal Juragan');
+    });
   }
 
   /* ---------- Lookup ---------- */
@@ -143,6 +155,86 @@
   /* ---------- Refresh derived fields after balance changes ---------- */
   function refreshDerived(bank) {
     bank.debitTier = debitTierFor(bank.balance);
+  }
+
+  /* =========================================================================
+     PHASE 4 — CASH-FLOW AUDIT (Mutasi Rekening)
+     Every cash-in or cash-out at a specific bank funnels through here so
+     bank.history[] is a complete ledger.
+     ========================================================================= */
+  function recordHistory(state, bank, type, amount, description) {
+    if (!bank) return;
+    if (!Array.isArray(bank.history)) bank.history = [];
+    bank.history.push({
+      date: JI.formatCalendar(state.totalDays),
+      day: state.totalDays,
+      type: type,
+      amount: Math.max(0, Math.round(amount || 0)),
+      description: description || '',
+    });
+    if (bank.history.length > 500) {
+      bank.history.splice(0, bank.history.length - 500);
+    }
+  }
+
+  /**
+   * Add cash to a bank with audit trail.
+   */
+  function bankCredit(state, bankId, amount, description) {
+    const bank = getBank(state, bankId);
+    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
+    const amt = Math.max(0, Math.round(Number(amount) || 0));
+    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
+    bank.balance += amt;
+    refreshDerived(bank);
+    recordHistory(state, bank, 'IN', amt, description || 'Penerimaan');
+    return { ok: true, bank, balance: bank.balance };
+  }
+
+  /**
+   * Deduct cash from a bank with audit trail. Refuses if insufficient.
+   */
+  function bankDebit(state, bankId, amount, description) {
+    const bank = getBank(state, bankId);
+    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
+    const amt = Math.max(0, Math.round(Number(amount) || 0));
+    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
+    if (bank.balance < amt) {
+      return { ok: false, error: `Saldo ${bank.shortName} tidak mencukupi.` };
+    }
+    bank.balance -= amt;
+    refreshDerived(bank);
+    recordHistory(state, bank, 'OUT', amt, description || 'Pengeluaran');
+    return { ok: true, bank, balance: bank.balance };
+  }
+
+  /**
+   * Drain richest banks first to cover an amount. Used by IPO dividend.
+   */
+  function debitAcrossBanks(state, amount, description) {
+    let remaining = Math.max(0, Math.round(amount || 0));
+    const drawn = [];
+    if (remaining <= 0) return { ok: true, drawnFrom: drawn, shortfall: 0 };
+
+    const banks = [...(state.banks || [])].sort((a, b) => b.balance - a.balance);
+    for (const b of banks) {
+      if (remaining <= 0) break;
+      if (b.balance <= 0) continue;
+      const take = Math.min(b.balance, remaining);
+      bankDebit(state, b.id, take, description);
+      drawn.push({ bankId: b.id, amount: take });
+      remaining -= take;
+    }
+    return { ok: remaining === 0, drawnFrom: drawn, shortfall: remaining };
+  }
+
+  /**
+   * Pick a random bank id (uniform). Used by passive rental-income deposits.
+   */
+  function pickRandomBankId(state) {
+    const banks = state.banks || [];
+    if (banks.length === 0) return null;
+    return banks[JI.randomInt(0, banks.length - 1)].id;
   }
 
   /* =========================================================================
@@ -167,6 +259,7 @@
       }
       bank.balance -= amt;
       refreshDerived(bank);
+      recordHistory(state, bank, 'OUT', amt, payment.label || 'Pembayaran');
       return { ok: true, method: 'bank', bankId: bank.id, amount: amt };
     }
 
@@ -181,6 +274,8 @@
           error: `Limit kartu kredit ${bank.shortName} tidak cukup (sisa ${JI.formatIDR(available)}).` };
       }
       bank.creditCard.used += amt;
+      recordHistory(state, bank, 'OUT', amt,
+        (payment.label || 'Pembayaran') + ' (Kartu Kredit)');
       return { ok: true, method: 'credit', bankId: bank.id, amount: amt };
     }
 
@@ -188,12 +283,13 @@
   }
 
   /* ---------- Refund (e.g. unused tax payments) ---------- */
-  function deposit(state, bankId, amount) {
+  function deposit(state, bankId, amount, label) {
     const amt = Math.floor(Number(amount) || 0);
     const bank = getBank(state, bankId);
     if (!bank || amt <= 0) return { ok: false };
     bank.balance += amt;
     refreshDerived(bank);
+    recordHistory(state, bank, 'IN', amt, label || 'Setoran');
     return { ok: true };
   }
 
@@ -215,6 +311,7 @@
     bank.balance -= amt;
     bank.creditCard.used -= amt;
     refreshDerived(bank);
+    recordHistory(state, bank, 'OUT', amt, `Pelunasan Kartu Kredit (${bank.shortName})`);
     JI.recomputeNetWorth(state);
     return { ok: true, paid: amt };
   }
@@ -234,6 +331,7 @@
       if (bank.balance >= installment) {
         bank.balance -= installment;
         bank.loan.remaining -= installment;
+        recordHistory(state, bank, 'OUT', installment, 'Cicilan KTA harian');
         events.push({
           bankId: bank.id,
           paid: installment,
@@ -244,6 +342,7 @@
         // Auto-fallback to credit card
         bank.creditCard.used += installment;
         bank.loan.remaining -= installment;
+        recordHistory(state, bank, 'OUT', installment, 'Cicilan KTA via Kartu Kredit');
         events.push({
           bankId: bank.id,
           paid: installment,
@@ -299,6 +398,8 @@
     to.balance   += amt;
     refreshDerived(from);
     refreshDerived(to);
+    recordHistory(state, from, 'OUT', amt, `Transfer ke ${to.shortName}`);
+    recordHistory(state, to,   'IN',  amt, `Transfer dari ${from.shortName}`);
     JI.recomputeNetWorth(state);
     JI.awardXP(state, Math.min(50, Math.floor(amt / 1_000_000)));
     return { ok: true, amount: amt };
@@ -349,6 +450,7 @@
     };
     bank.balance += p; // disbursement
     refreshDerived(bank);
+    recordHistory(state, bank, 'IN', p, 'Pencairan KTA');
     JI.recomputeNetWorth(state);
     JI.awardXP(state, 120);
     return { ok: true, quote: q };
@@ -400,6 +502,7 @@
       const take = Math.min(bank.balance, need);
       bank.balance -= take;
       refreshDerived(bank);
+      recordHistory(state, bank, 'OUT', take, label);
       sources.push({ kind: 'bank', bankId: bank.id, amount: take });
       need -= take;
     }
@@ -414,6 +517,7 @@
         if (need <= 0) break;
         const take = Math.min(available, need);
         bank.creditCard.used += take;
+        recordHistory(state, bank, 'OUT', take, label + ' (Kartu Kredit)');
         sources.push({ kind: 'credit', bankId: bank.id, amount: take });
         need -= take;
       }
@@ -446,6 +550,9 @@
       const newUsed = Math.min(bank.creditCard.limit, used + charge);
       const applied = newUsed - used;
       bank.creditCard.used = newUsed;
+      if (applied > 0) {
+        recordHistory(state, bank, 'OUT', applied, 'Bunga Kartu Kredit (5%/bln)');
+      }
       events.push({ bankId: bank.id, charge: applied, requested: charge });
     });
     JI.recomputeNetWorth(state);
@@ -482,5 +589,11 @@
     // Phase 3 additions
     deductFromBest,
     enforceMonthlyCCCharges,
+    // Phase 4 additions
+    bankCredit,
+    bankDebit,
+    debitAcrossBanks,
+    pickRandomBankId,
+    recordHistory,
   });
 })(window);
