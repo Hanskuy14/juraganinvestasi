@@ -139,12 +139,12 @@
     const renderers = {
       home:      renderHomePanel,
       banking:   renderBankingPanel,
-      market:    () => renderPlaceholder(panel, 'Market', 'Saham, kripto & komoditas hadir di Phase 2.'),
-      portfolio: () => renderPlaceholder(panel, 'Portfolio', 'Pelacakan posisi & PnL hadir di Phase 2.'),
-      news:      () => renderPlaceholder(panel, 'News', 'Feed berita ekonomi hadir di Phase 2.'),
-      coretax:   () => renderPlaceholder(panel, 'CoreTax DJP', 'Pelaporan SPT & PPh hadir di Phase 3.'),
-      hrd:       () => renderPlaceholder(panel, 'HRD', 'Rekrutmen karyawan hadir di Phase 3.'),
-      aset:      () => renderPlaceholder(panel, 'Aset Fisik', 'Properti, mobil & kantor hadir di Phase 3.'),
+      market:    renderMarketPanel,
+      portfolio: renderPortfolioPanel,
+      news:      renderNewsPanel,
+      coretax:   () => renderPlaceholder(panel, 'CoreTax DJP', 'Pelaporan SPT & PPh hadir di Phase 6.'),
+      hrd:       () => renderPlaceholder(panel, 'HRD', 'Rekrutmen karyawan hadir di Phase 6.'),
+      aset:      () => renderPlaceholder(panel, 'Aset Fisik', 'Properti, mobil & kantor hadir di Phase 6.'),
     };
     (renderers[id] || (() => {}))(panel);
   }
@@ -249,6 +249,51 @@
       ]));
     });
     panel.appendChild(quick);
+
+    // Next Day mega-CTA
+    panel.appendChild(renderNextDayCTA());
+  }
+
+  /* ---------- Next Day call-to-action ---------- */
+  function renderNextDayCTA() {
+    const wrap = JI.el('div', {
+      class: 'ji-card p-6 mt-6 bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700 text-white relative overflow-hidden'
+    });
+    wrap.appendChild(JI.el('div', {
+      class: 'absolute -bottom-12 -right-12 w-48 h-48 rounded-full bg-white/10 blur-2xl pointer-events-none'
+    }));
+    wrap.appendChild(JI.el('p', { class: 'text-xs uppercase tracking-[0.3em] text-white/80' }, 'Game Loop'));
+    wrap.appendChild(JI.el('h3', { class: 'text-2xl font-extrabold mt-1 mb-2' }, 'Next Day →'));
+    wrap.appendChild(JI.el('p', { class: 'text-sm text-white/85 max-w-xl mb-4' },
+      'Lanjutkan ke hari berikutnya. Berita pasar baru terbit, harga aset bergerak, dan ada 8% peluang kejadian tak terduga di Indonesia menyapa kantor Anda.'));
+    wrap.appendChild(JI.el('button', {
+      class: 'ji-btn bg-white text-emerald-700 hover:bg-emerald-50 font-bold px-6 py-3',
+      onclick: handleNextDayClick,
+    }, '⏭  Lanjut ke Hari Berikutnya'));
+    return wrap;
+  }
+
+  /* ---------- Next Day click handler (used by Home + global FAB) ---------- */
+  function handleNextDayClick() {
+    const s = JI.gameState;
+    const report = JI.nextDay(s);
+    renderHeader();
+    renderActivePanel();
+
+    // If event fired, surface it via the modal (terrifying red / shiny gold).
+    if (s.pendingEvent) {
+      JI.showEventModal(s.pendingEvent, () => {
+        s.pendingEvent = null;
+        JI.saveState(s);
+        renderHeader();
+        renderActivePanel();
+      });
+    } else if (report && report.news && report.news.length) {
+      const sample = report.news[0];
+      JI.toast(`Hari ${s.totalDays}: ${sample.headline}`, 'info', 3500);
+    } else {
+      JI.toast(`Hari ${s.totalDays}: pasar tenang.`, 'info');
+    }
   }
 
   function statCard({ label, value, sub, accent = 'text-slate-900', mono = false }) {
@@ -531,11 +576,311 @@
     ]);
   }
 
-  /* ---------- Entry: render whole UI ---------- */
+  /* =========================================================================
+     Market panel  (Phase 5)
+     Shows 45 hardcoded assets in 3 tabs; quick Buy form per asset.
+     ========================================================================= */
+  function renderMarketPanel(panel) {
+    const s = JI.gameState;
+    if (typeof JI.seedMarket === 'function') JI.seedMarket(s);
+    panel.innerHTML = '';
+
+    panel.appendChild(JI.el('div', { class: 'mb-5 flex items-end justify-between gap-3 flex-wrap' }, [
+      JI.el('div', {}, [
+        JI.el('h2', { class: 'text-2xl sm:text-3xl font-bold' }, 'Market'),
+        JI.el('p', { class: 'text-slate-500 text-sm mt-1' },
+          '45 aset hardcoded · Saham IDX, Kripto, Reksadana. Harga bergerak setiap "Next Day".'),
+      ]),
+      JI.el('button', {
+        class: 'ji-btn ji-btn-success',
+        onclick: handleNextDayClick,
+      }, '⏭  Next Day'),
+    ]));
+
+    /* category sub-tabs */
+    const cats = [
+      { id: 'stock',  label: '📈 Saham IDX',  count: 15 },
+      { id: 'crypto', label: '₿ Kripto',      count: 15 },
+      { id: 'mutual', label: '📊 Reksadana',  count: 15 },
+    ];
+    if (!s._marketCat) s._marketCat = 'stock';
+
+    const tabs = JI.el('div', { class: 'flex gap-2 mb-4 overflow-x-auto pb-1' });
+    cats.forEach(c => {
+      const active = s._marketCat === c.id;
+      tabs.appendChild(JI.el('button', {
+        class: `ji-btn ${active ? 'ji-btn-primary' : 'ji-btn-ghost'} text-sm`,
+        onclick: () => { s._marketCat = c.id; renderMarketPanel(panel); },
+      }, `${c.label} · ${c.count}`));
+    });
+    panel.appendChild(tabs);
+
+    /* asset list */
+    const list = JI.el('div', { class: 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3' });
+    JI.getAssetsByCategory(s._marketCat).forEach(asset => {
+      list.appendChild(renderAssetTile(asset));
+    });
+    panel.appendChild(list);
+  }
+
+  function renderAssetTile(asset) {
+    const s = JI.gameState;
+    const price = JI.getCurrentPrice(s, asset.ticker);
+    const ch = JI.dailyChangePct(s, asset.ticker);
+    const chColor = ch > 0 ? 'text-emerald-600' : ch < 0 ? 'text-red-600' : 'text-slate-500';
+    const chSign  = ch > 0 ? '+' : '';
+
+    const card = JI.el('div', { class: 'ji-card p-4' });
+
+    card.appendChild(JI.el('div', { class: 'flex items-start justify-between mb-2 gap-2' }, [
+      JI.el('div', {}, [
+        JI.el('p', { class: 'font-mono text-xs text-slate-500' }, asset.ticker),
+        JI.el('h4', { class: 'font-semibold text-sm leading-tight' }, asset.name),
+        asset.sector ? JI.el('p', { class: 'text-[10px] text-slate-400 uppercase tracking-wider' }, asset.sector) : null,
+      ]),
+      JI.el('span', { class: `font-mono text-xs ${chColor}` },
+        ch === 0 ? '—' : `${chSign}${(ch * 100).toFixed(1)}%`),
+    ]));
+
+    card.appendChild(JI.el('p', { class: 'font-mono text-lg font-bold mb-3' }, JI.formatPrice(asset.ticker, price)));
+
+    const qtyInput = JI.el('input', {
+      type: 'number', inputmode: 'numeric', min: '1', step: '1',
+      placeholder: 'Unit', class: 'ji-input',
+    });
+    const totalEl = JI.el('p', { class: 'text-[11px] text-slate-500 font-mono mt-1' }, '—');
+    qtyInput.addEventListener('input', () => {
+      const q = parseInt(qtyInput.value, 10) || 0;
+      totalEl.textContent = q > 0 ? `Total: ${JI.formatIDR(q * price)}` : '—';
+    });
+
+    const buyBtn = JI.el('button', {
+      class: 'ji-btn ji-btn-primary w-full mt-2',
+      onclick: () => {
+        const q = parseInt(qtyInput.value, 10) || 0;
+        if (q <= 0) { JI.toast('Masukkan jumlah unit dulu.', 'warning'); return; }
+        const r = JI.buyAsset(s, asset.ticker, q);
+        if (!r.ok) { JI.toast(r.error, 'error'); return; }
+        JI.toast(`Beli ${r.qty} ${r.ticker} @ ${JI.formatIDR(r.price)} dari ${r.bankName}.`, 'success');
+        qtyInput.value = '';
+        JI.saveState(s);
+        renderHeader();
+        renderActivePanel();
+      },
+    }, 'Beli');
+
+    card.appendChild(JI.el('div', { class: 'grid grid-cols-2 gap-2' }, [qtyInput, buyBtn]));
+    card.appendChild(totalEl);
+    return card;
+  }
+
+  /* =========================================================================
+     Portfolio panel  (Phase 5)  — sells trigger XP toast on profit.
+     ========================================================================= */
+  function renderPortfolioPanel(panel) {
+    const s = JI.gameState;
+    if (typeof JI.seedMarket === 'function') JI.seedMarket(s);
+    panel.innerHTML = '';
+
+    panel.appendChild(JI.el('div', { class: 'mb-5' }, [
+      JI.el('h2', { class: 'text-2xl sm:text-3xl font-bold' }, 'Portfolio'),
+      JI.el('p', { class: 'text-slate-500 text-sm mt-1' },
+        'Posisi aktif Anda. Klik SELL untuk realisasi keuntungan dan dapatkan XP.'),
+    ]));
+
+    const portfolio = s.portfolio || [];
+    if (portfolio.length === 0) {
+      panel.appendChild(JI.el('div', { class: 'ji-card p-8 text-center' }, [
+        JI.el('div', { class: 'text-4xl mb-3' }, '💼'),
+        JI.el('p', { class: 'text-slate-500' }, 'Belum ada aset. Beli dari tab Market untuk memulai.'),
+      ]));
+      return;
+    }
+
+    /* summary header */
+    const totalValue = JI.portfolioMarketValue(s);
+    const totalCost  = portfolio.reduce((a, p) => a + p.avgPrice * p.qty, 0);
+    const pnl = totalValue - totalCost;
+    const pnlColor = pnl >= 0 ? 'text-emerald-600' : 'text-red-600';
+
+    panel.appendChild(JI.el('div', { class: 'grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5' }, [
+      statCard({ label: 'Total Value', value: JI.formatIDR(totalValue), accent: 'text-slate-900' }),
+      statCard({ label: 'Cost Basis',  value: JI.formatIDR(totalCost), accent: 'text-slate-700' }),
+      statCard({
+        label: 'Unrealized P/L',
+        value: `${pnl >= 0 ? '+' : ''}${JI.formatIDR(pnl)}`,
+        accent: pnlColor,
+        sub: totalCost > 0 ? `${((pnl / totalCost) * 100).toFixed(2)}%` : '',
+      }),
+    ]));
+
+    const list = JI.el('div', { class: 'grid grid-cols-1 md:grid-cols-2 gap-3' });
+    portfolio.slice().forEach(pos => {
+      list.appendChild(renderPositionTile(pos));
+    });
+    panel.appendChild(list);
+  }
+
+  function renderPositionTile(pos) {
+    const s = JI.gameState;
+    const snap = JI.positionSnapshot(s, pos);
+    const asset = JI.getAsset(pos.ticker);
+    const pnlColor = snap.pnl >= 0 ? 'text-emerald-600' : 'text-red-600';
+
+    const card = JI.el('div', { class: 'ji-card p-4' });
+
+    card.appendChild(JI.el('div', { class: 'flex items-start justify-between gap-2 mb-3' }, [
+      JI.el('div', {}, [
+        JI.el('p', { class: 'font-mono text-xs text-slate-500' }, pos.ticker),
+        JI.el('h4', { class: 'font-semibold' }, asset ? asset.name : pos.ticker),
+      ]),
+      JI.el('span', { class: `font-mono text-sm ${pnlColor}` },
+        `${snap.pnl >= 0 ? '+' : ''}${(snap.pnlPct * 100).toFixed(2)}%`),
+    ]));
+
+    card.appendChild(JI.el('div', { class: 'grid grid-cols-2 gap-2 text-sm mb-3' }, [
+      kv('Qty', String(pos.qty)),
+      kv('Avg Price', JI.formatIDR(pos.avgPrice)),
+      kv('Last Price', JI.formatIDR(snap.currentPrice)),
+      kv('Value', JI.formatIDR(snap.marketValue)),
+      kv('P/L', `${snap.pnl >= 0 ? '+' : ''}${JI.formatIDR(snap.pnl)}`,
+        `${pnlColor} font-semibold`),
+    ]));
+
+    const qtyInput = JI.el('input', {
+      type: 'number', inputmode: 'numeric', min: '1', max: String(pos.qty), step: '1',
+      placeholder: `Max ${pos.qty}`, class: 'ji-input',
+    });
+
+    const sellBtn = JI.el('button', {
+      class: 'ji-btn ji-btn-warning w-full',
+      onclick: () => {
+        const q = parseInt(qtyInput.value, 10) || 0;
+        if (q <= 0) { JI.toast('Masukkan jumlah unit untuk dijual.', 'warning'); return; }
+        const r = JI.sellAsset(s, pos.ticker, q);
+        if (!r.ok) { JI.toast(r.error, 'error'); return; }
+
+        // Phase 5: floating XP toast on profitable sale
+        if (r.profit > 0 && r.xpAwarded > 0) {
+          JI.showXPToast(r.xpAwarded, { note: `Profit ${JI.formatIDR(r.profit)}` });
+        }
+        const tone = r.profit > 0 ? 'success' : 'info';
+        const label = r.profit > 0 ? 'Profit' : (r.profit < 0 ? 'Loss' : 'Break-even');
+        JI.toast(`Sell ${r.qty} ${r.ticker} → ${JI.formatIDR(r.proceeds)} (${label} ${JI.formatIDR(Math.abs(r.profit))})`, tone);
+
+        if (r.leveledUp) {
+          setTimeout(() => JI.toast(`🎉 LEVEL UP! Level ${s.companyLevel} · ${JI.getCompanyTitle(s.companyLevel)}`, 'success', 4000), 400);
+        }
+        JI.saveState(s);
+        renderHeader();
+        renderActivePanel();
+      },
+    }, 'SELL');
+
+    card.appendChild(JI.el('div', { class: 'grid grid-cols-2 gap-2' }, [qtyInput, sellBtn]));
+    return card;
+  }
+
+  /* =========================================================================
+     News panel  (Phase 5)
+     ========================================================================= */
+  function renderNewsPanel(panel) {
+    const s = JI.gameState;
+    panel.innerHTML = '';
+
+    panel.appendChild(JI.el('div', { class: 'mb-5 flex items-end justify-between gap-3 flex-wrap' }, [
+      JI.el('div', {}, [
+        JI.el('h2', { class: 'text-2xl sm:text-3xl font-bold' }, 'News'),
+        JI.el('p', { class: 'text-slate-500 text-sm mt-1' },
+          'Berita harian per-aset menggerakkan harga di Next Day.'),
+      ]),
+      JI.el('button', { class: 'ji-btn ji-btn-success', onclick: handleNextDayClick }, '⏭  Next Day'),
+    ]));
+
+    /* Today's headlines */
+    const todays = (s.todaysNews || []).filter(n => n.day === s.totalDays);
+    panel.appendChild(JI.el('h3', { class: 'text-sm uppercase tracking-wider text-slate-500 mb-2' },
+      `Headlines Hari ${s.totalDays}`));
+
+    if (todays.length === 0) {
+      panel.appendChild(JI.el('div', { class: 'ji-card p-5 text-slate-500 text-sm mb-6' },
+        'Belum ada berita hari ini. Klik "Next Day" untuk memunculkan headline pasar.'));
+    } else {
+      const grid = JI.el('div', { class: 'grid grid-cols-1 md:grid-cols-2 gap-3 mb-6' });
+      todays.forEach(n => grid.appendChild(renderNewsCard(n)));
+      panel.appendChild(grid);
+    }
+
+    /* History */
+    const history = (s.newsHistory || []).filter(n => n.day !== s.totalDays).slice(0, 30);
+    panel.appendChild(JI.el('h3', { class: 'text-sm uppercase tracking-wider text-slate-500 mb-2' }, 'History'));
+    if (history.length === 0) {
+      panel.appendChild(JI.el('div', { class: 'ji-card p-5 text-slate-500 text-sm' },
+        'Belum ada arsip berita.'));
+    } else {
+      const list = JI.el('div', { class: 'space-y-2' });
+      history.forEach(n => list.appendChild(renderNewsRow(n)));
+      panel.appendChild(list);
+    }
+
+    /* Event log */
+    if ((s.eventLog || []).length > 0) {
+      panel.appendChild(JI.el('h3', { class: 'text-sm uppercase tracking-wider text-slate-500 mt-8 mb-2' },
+        'Event Log (Indonesia Banget)'));
+      const evList = JI.el('div', { class: 'space-y-2' });
+      s.eventLog.slice(0, 20).forEach(e => {
+        const cls = e.type === 'positive' ? 'event-row-positive' : 'event-row-negative';
+        evList.appendChild(JI.el('div', { class: `ji-card p-3 ${cls}` }, [
+          JI.el('div', { class: 'flex items-center justify-between gap-2 flex-wrap' }, [
+            JI.el('p', { class: 'font-semibold text-sm' }, e.title),
+            JI.el('p', { class: 'text-[11px] font-mono text-slate-500' }, `Hari ${e.day}`),
+          ]),
+          e.description ? JI.el('p', { class: 'text-xs text-slate-600 mt-1' }, e.description) : null,
+        ]));
+      });
+      panel.appendChild(evList);
+    }
+  }
+
+  function renderNewsCard(n) {
+    const tone = n.sentiment === 'bullish' ? 'news-bullish' : 'news-bearish';
+    const badge = n.sentiment === 'bullish' ? 'BULLISH ▲' : 'BEARISH ▼';
+    return JI.el('div', { class: `ji-card p-4 ${tone}` }, [
+      JI.el('div', { class: 'flex items-center justify-between gap-2 mb-2' }, [
+        JI.el('span', { class: 'font-mono text-xs text-slate-500' }, `${n.ticker} · ${n.category.toUpperCase()}`),
+        JI.el('span', { class: `news-badge ${n.sentiment}` }, badge),
+      ]),
+      JI.el('h4', { class: 'font-semibold leading-snug' }, n.headline),
+      n.body ? JI.el('p', { class: 'text-xs text-slate-500 mt-1' }, n.body) : null,
+    ]);
+  }
+
+  function renderNewsRow(n) {
+    const tone = n.sentiment === 'bullish' ? 'text-emerald-600' : 'text-red-600';
+    return JI.el('div', { class: 'ji-card p-3 flex items-center justify-between gap-3 flex-wrap' }, [
+      JI.el('div', { class: 'min-w-0 flex-1' }, [
+        JI.el('p', { class: 'text-xs font-mono text-slate-500' }, `Hari ${n.day} · ${n.ticker}`),
+        JI.el('p', { class: 'text-sm' }, n.headline),
+      ]),
+      JI.el('span', { class: `font-mono text-xs ${tone}` },
+        n.sentiment === 'bullish' ? '▲' : '▼'),
+    ]);
+  }
+
+
   function renderAll() {
     renderHeader();
     highlightActiveTab();
     renderActivePanel();
+    // Surface persisted pendingEvent (e.g. browser was closed mid-modal).
+    if (JI.gameState && JI.gameState.pendingEvent) {
+      JI.showEventModal(JI.gameState.pendingEvent, () => {
+        JI.gameState.pendingEvent = null;
+        JI.saveState(JI.gameState);
+        renderHeader();
+        renderActivePanel();
+      });
+    }
   }
 
   /* ---------- Expose ---------- */
@@ -547,5 +892,6 @@
     renderActivePanel,
     renderAll,
     switchTab,
+    handleNextDayClick,
   });
 })(window);

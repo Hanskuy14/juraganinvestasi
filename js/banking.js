@@ -165,7 +165,7 @@
     refreshDerived(from);
     refreshDerived(to);
     JI.recomputeNetWorth(state);
-    JI.awardXP(state, Math.min(50, Math.floor(amt / 1_000_000)));
+    // Phase 5: no XP from transfers — XP is awarded ONLY on profitable sellAsset().
     return { ok: true, amount: amt };
   }
 
@@ -183,7 +183,7 @@
     bank.creditCard.isApproved = true;
     bank.creditCard.limit = offer.limit;
     bank.creditCard.used = 0;
-    JI.awardXP(state, 80);
+    // Phase 5: no XP from CC approval.
     return { ok: true, limit: offer.limit };
   }
 
@@ -215,7 +215,7 @@
     bank.balance += p; // disbursement
     refreshDerived(bank);
     JI.recomputeNetWorth(state);
-    JI.awardXP(state, 120);
+    // Phase 5: no XP from taking out a loan.
     return { ok: true, quote: q };
   }
 
