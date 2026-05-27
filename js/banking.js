@@ -359,8 +359,97 @@
     return (state.banks || []).reduce((a, b) => a + (b.balance || 0), 0);
   }
 
+  function totalCreditCardDebt(state) {
+    return (state.banks || []).reduce((a, b) =>
+      a + (b.creditCard && b.creditCard.used ? b.creditCard.used : 0), 0);
+  }
+
+  function totalAvailableCredit(state) {
+    return (state.banks || []).reduce((a, b) => {
+      if (!b.creditCard || !b.creditCard.isApproved) return a;
+      return a + (b.creditCard.limit - b.creditCard.used);
+    }, 0);
+  }
+
   function activeLoanCount(state) {
     return (state.banks || []).filter(b => b.loan && b.loan.isActive).length;
+  }
+
+  /* =========================================================================
+     deductFromBest(state, amount, label)
+     Pay an arbitrary expense (ops cost, salary, tax, etc.) using the best
+     available source. Order:
+       1. Largest single bank balance >= amount → debit it.
+       2. Drain banks in descending balance order until covered.
+       3. Fall back to credit card with most available limit.
+       4. Otherwise mark as missed (returns ok:false with shortfall).
+     Returns: { ok, sources: [{kind, bankId, amount}], shortfall }
+     ========================================================================= */
+  function deductFromBest(state, amount, label = 'expense') {
+    let need = Math.max(0, Math.floor(Number(amount) || 0));
+    if (need === 0) return { ok: true, sources: [], shortfall: 0, label };
+
+    const sources = [];
+    // Step 1+2: drain banks
+    const banks = (state.banks || [])
+      .slice()
+      .sort((a, b) => b.balance - a.balance);
+    for (const bank of banks) {
+      if (need <= 0) break;
+      if (bank.balance <= 0) continue;
+      const take = Math.min(bank.balance, need);
+      bank.balance -= take;
+      refreshDerived(bank);
+      sources.push({ kind: 'bank', bankId: bank.id, amount: take });
+      need -= take;
+    }
+    // Step 3: fall back to credit cards (largest available limit first)
+    if (need > 0) {
+      const ccs = (state.banks || [])
+        .filter(b => b.creditCard && b.creditCard.isApproved)
+        .map(b => ({ bank: b, available: b.creditCard.limit - b.creditCard.used }))
+        .filter(x => x.available > 0)
+        .sort((a, b) => b.available - a.available);
+      for (const { bank, available } of ccs) {
+        if (need <= 0) break;
+        const take = Math.min(available, need);
+        bank.creditCard.used += take;
+        sources.push({ kind: 'credit', bankId: bank.id, amount: take });
+        need -= take;
+      }
+    }
+    JI.recomputeNetWorth(state);
+    return {
+      ok: need === 0,
+      sources,
+      shortfall: need,
+      label,
+    };
+  }
+
+  /* =========================================================================
+     enforceMonthlyCCCharges(state)
+     Called once per month (every 30 days). Applies a 5% finance charge to
+     any outstanding credit-card balance, simulating Indonesian CC monthly
+     interest. Returns events: [{bankId, charge}].
+     ========================================================================= */
+  const CC_MONTHLY_INTEREST = 0.05;
+
+  function enforceMonthlyCCCharges(state) {
+    const events = [];
+    (state.banks || []).forEach(bank => {
+      if (!bank.creditCard || !bank.creditCard.isApproved) return;
+      const used = bank.creditCard.used || 0;
+      if (used <= 0) return;
+      const charge = Math.round(used * CC_MONTHLY_INTEREST);
+      // Cap so used never exceeds the limit; if it would, only fill to limit.
+      const newUsed = Math.min(bank.creditCard.limit, used + charge);
+      const applied = newUsed - used;
+      bank.creditCard.used = newUsed;
+      events.push({ bankId: bank.id, charge: applied, requested: charge });
+    });
+    JI.recomputeNetWorth(state);
+    return events;
   }
 
   /* ---------- Expose ---------- */
@@ -378,14 +467,20 @@
     applyLoan,
     totalBankBalance,
     activeLoanCount,
+    totalCreditCardDebt,
+    totalAvailableCredit,
     LOAN_INTEREST_FLAT,
     LOAN_TERM_DAYS,
     CC_MAX_LIMIT,
+    CC_MONTHLY_INTEREST,
     // Phase 2 additions
     charge,
     deposit,
     repayCreditCard,
     tickDailyLoans,
     refreshBankDerived: refreshDerived,
+    // Phase 3 additions
+    deductFromBest,
+    enforceMonthlyCCCharges,
   });
 })(window);

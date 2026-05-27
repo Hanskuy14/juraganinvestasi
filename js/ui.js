@@ -252,8 +252,8 @@
       portfolio: renderPortfolioPanel,
       news:      renderNewsPanel,
       aset:      renderAsetPanel,
-      coretax:   p => renderPlaceholder(p, 'CoreTax DJP', 'Pelaporan SPT & PPh hadir di Phase 3.'),
-      hrd:       p => renderPlaceholder(p, 'HRD', 'Rekrutmen karyawan hadir di Phase 3.'),
+      coretax:   renderCoreTaxPanel,
+      hrd:       renderHRDPanel,
     }[id] || (() => {}))(panel);
   }
 
@@ -275,6 +275,8 @@
     const xpNeed = JI.xpToNext(s.companyLevel);
     const xpPct  = JI.clamp(Math.round((s.companyXP / xpNeed) * 100), 0, 100);
     const title  = JI.getCompanyTitle(s.companyLevel);
+    const tier   = JI.getCompanyTitleTier ? JI.getCompanyTitleTier(s.companyLevel) : { icon: '🏛' };
+    const perks  = JI.getActivePerks ? JI.getActivePerks(s) : { analyst: null, taxConsultant: null, broker: null };
 
     panel.innerHTML = '';
 
@@ -283,10 +285,21 @@
       class: 'ji-card p-6 sm:p-8 mb-6 bg-gradient-to-br from-ink-900 via-ink-800 to-ink-900 text-white relative overflow-hidden'
     });
     hero.appendChild(JI.el('div', { class: 'absolute -top-16 -right-16 w-64 h-64 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none' }));
-    hero.appendChild(JI.el('p', { class: 'text-xs uppercase tracking-[0.3em] text-emerald-400 mb-2' }, 'Welcome back, Juragan'));
-    hero.appendChild(JI.el('h2', { class: 'text-2xl sm:text-4xl font-extrabold tracking-tight' }, 'Juragan Investasi: Capitalist Tycoon'));
-    hero.appendChild(JI.el('p', { class: 'text-slate-300 mt-2 max-w-xl text-sm sm:text-base' },
-      'Bangun imperium investasi Anda di Indonesia. Kelola kas, manfaatkan kredit, dan tumbuhkan kekayaan dari hari ke hari.'));
+    hero.appendChild(JI.el('div', { class: 'flex items-start justify-between gap-3 flex-wrap' }, [
+      JI.el('div', {}, [
+        JI.el('p', { class: 'text-xs uppercase tracking-[0.3em] text-emerald-400 mb-2' }, 'Welcome back, Juragan'),
+        JI.el('h2', { class: 'text-2xl sm:text-4xl font-extrabold tracking-tight' }, 'Juragan Investasi: Capitalist Tycoon'),
+        JI.el('p', { class: 'text-slate-300 mt-2 max-w-xl text-sm sm:text-base' },
+          'Bangun imperium investasi Anda di Indonesia. Kelola kas, manfaatkan kredit, dan tumbuhkan kekayaan dari hari ke hari.'),
+      ]),
+      JI.el('div', { class: 'tier-pill flex items-center gap-2 self-start mt-1' }, [
+        JI.el('span', { class: 'text-xl leading-none' }, tier.icon),
+        JI.el('div', {}, [
+          JI.el('p', { class: 'text-[10px] uppercase tracking-widest text-emerald-300/80' }, `Level ${s.companyLevel}`),
+          JI.el('p', { class: 'font-bold text-sm leading-tight' }, title),
+        ]),
+      ]),
+    ]));
     panel.appendChild(hero);
 
     /* Stats */
@@ -294,21 +307,30 @@
       const m = s.marketAssets[h.ticker];
       return acc + (m ? m.price : 0) * h.qty;
     }, 0);
-    const physicalValue = JI.totalPhysicalValue(s);
+    const physicalValue = JI.totalPhysicalValue ? JI.totalPhysicalValue(s) : 0;
+    const cap     = (s.physicalAssets && s.physicalAssets.officeCapacity) || 0;
+    const hired   = (s.hiredEmployees || []).length;
+    const unpaidTax = JI.totalUnpaidTax ? JI.totalUnpaidTax(s) : 0;
+    const ccDebt  = JI.totalCreditCardDebt ? JI.totalCreditCardDebt(s) : 0;
 
     const grid = JI.el('div', { class: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6' });
     grid.appendChild(statCard({ label: 'Total Net Worth', value: JI.formatIDR(s.totalNetWorth), sub: 'Bank + Portfolio + Aset − Utang', accent: 'text-emerald-600' }));
     grid.appendChild(statCard({ label: 'Tanggal', value: JI.formatCalendar(s.totalDays), sub: `Hari ke-${s.totalDays}`, mono: true }));
     grid.appendChild(statCard({ label: 'Portfolio', value: JI.formatIDR(portfolioValue), sub: `${(s.portfolio || []).length} posisi terbuka`, accent: 'text-blue-600' }));
-    grid.appendChild(statCard({ label: 'Aset Fisik', value: JI.formatIDR(physicalValue), sub: `Kapasitas kantor: ${s.physicalAssets.officeCapacity} pegawai`, accent: 'text-violet-600' }));
+    grid.appendChild(statCard({ label: 'Aset Fisik', value: JI.formatIDR(physicalValue), sub: `Kapasitas kantor: ${cap} pegawai`, accent: 'text-violet-600' }));
     panel.appendChild(grid);
 
-    /* Company Level */
+    /* Company Level (with tier icon) */
     const lvlCard = JI.el('div', { class: 'ji-card p-6 mb-6' });
     lvlCard.appendChild(JI.el('div', { class: 'flex items-start justify-between gap-3 mb-4 flex-wrap' }, [
-      JI.el('div', {}, [
-        JI.el('p', { class: 'text-xs uppercase tracking-wider text-slate-500' }, 'Company Level'),
-        JI.el('h3', { class: 'text-xl sm:text-2xl font-bold mt-1' }, `Level ${s.companyLevel} · ${title}`),
+      JI.el('div', { class: 'flex items-center gap-3' }, [
+        JI.el('div', { class: 'text-3xl' }, tier.icon),
+        JI.el('div', {}, [
+          JI.el('p', { class: 'text-xs uppercase tracking-wider text-slate-500' }, 'Company Level'),
+          JI.el('h3', { class: 'text-xl sm:text-2xl font-bold mt-1' }, `Level ${s.companyLevel} · ${title}`),
+          JI.el('p', { class: 'text-[11px] text-slate-500 mt-1' },
+            `Tier: L${tier.min}${tier.max === Infinity ? '+' : `-${tier.max}`}`),
+        ]),
       ]),
       JI.el('div', { class: 'text-right' }, [
         JI.el('p', { class: 'text-xs text-slate-500' }, 'XP'),
@@ -318,7 +340,61 @@
     const xpBar = JI.el('div', { class: 'xp-bar' });
     xpBar.appendChild(JI.el('span', { style: `width:${xpPct}%` }));
     lvlCard.appendChild(xpBar);
+    lvlCard.appendChild(JI.el('p', { class: 'mt-3 text-xs text-slate-500' },
+      `Naik level dari profit jual aset (50 XP + 1 XP per Rp 1jt profit). Threshold berikutnya: Level ${s.companyLevel + 1}.`));
     panel.appendChild(lvlCard);
+
+    /* Operations strip — capacity, payroll, unpaid tax, CC debt */
+    const opsGrid = JI.el('div', { class: 'grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6' });
+    opsGrid.appendChild(miniStatCard({
+      label: 'HRD',
+      value: `${hired} / ${cap}`,
+      sub: cap > 0 ? `${cap - hired} slot tersedia` : 'Beli properti dulu',
+      accent: hired >= cap ? 'text-amber-600' : 'text-slate-900',
+      onClick: () => switchTab('hrd'),
+    }));
+    opsGrid.appendChild(miniStatCard({
+      label: 'Gaji Bulanan',
+      value: JI.formatIDR(JI.totalMonthlySalary ? JI.totalMonthlySalary(s) : 0),
+      sub: 'ditagih per 30 hari',
+      accent: 'text-slate-900',
+      onClick: () => switchTab('hrd'),
+    }));
+    opsGrid.appendChild(miniStatCard({
+      label: 'Pajak Belum Dibayar',
+      value: JI.formatIDR(unpaidTax),
+      sub: unpaidTax > 0 ? 'Buka CoreTax DJP' : 'Aman',
+      accent: unpaidTax > 0 ? 'text-rose-600' : 'text-emerald-600',
+      onClick: () => switchTab('coretax'),
+    }));
+    opsGrid.appendChild(miniStatCard({
+      label: 'Utang Kartu Kredit',
+      value: JI.formatIDR(ccDebt),
+      sub: ccDebt > 0 ? '5%/bulan bunga' : 'Tidak ada',
+      accent: ccDebt > 0 ? 'text-amber-600' : 'text-slate-900',
+      onClick: () => switchTab('banking'),
+    }));
+    panel.appendChild(opsGrid);
+
+    /* Analyst predictions (if hired) */
+    if (perks.analyst && JI.predictMarketImpacts) {
+      const preds = JI.predictMarketImpacts(s, perks.analyst.predictionCount || 1);
+      if (preds.length) {
+        const predCard = JI.el('div', { class: 'ji-card p-6 mb-6 border-l-4 border-emerald-500' });
+        predCard.appendChild(JI.el('div', { class: 'flex items-center justify-between flex-wrap gap-2 mb-3' }, [
+          JI.el('h3', { class: 'font-bold text-slate-900 flex items-center gap-2' }, [
+            JI.el('span', { class: 'text-xl' }, '📊'),
+            `Prediksi Analis (${perks.analyst.tierName})`,
+          ]),
+          JI.el('span', { class: 'text-[10px] px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold uppercase tracking-wider' },
+            `${preds.length} aset`),
+        ]));
+        const list = JI.el('div', { class: 'grid grid-cols-1 md:grid-cols-2 gap-2' });
+        preds.forEach(p => list.appendChild(predictionRow(p)));
+        predCard.appendChild(list);
+        panel.appendChild(predCard);
+      }
+    }
 
     /* Today's news preview */
     const news = s.dailyNews || [];
@@ -341,12 +417,12 @@
     panel.appendChild(newsCard);
 
     /* Quick actions */
-    const quick = JI.el('div', { class: 'grid grid-cols-2 sm:grid-cols-4 gap-3' });
+    const quick = JI.el('div', { class: 'grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6' });
     [
       { id: 'banking',   label: 'Banking',     icon: '🏦' },
       { id: 'market',    label: 'Market',      icon: '📈' },
       { id: 'portfolio', label: 'Portfolio',   icon: '💼' },
-      { id: 'aset',      label: 'Aset Fisik',  icon: '🏢' },
+      { id: 'hrd',       label: 'HRD',         icon: '👥' },
     ].forEach(q => quick.appendChild(JI.el('button', {
       class: 'ji-card p-4 text-left hover:shadow-md transition-shadow',
       onclick: () => switchTab(q.id),
@@ -355,6 +431,24 @@
       JI.el('p', { class: 'text-sm font-semibold' }, q.label),
     ])));
     panel.appendChild(quick);
+
+    /* Save / Reset row */
+    const sysRow = JI.el('div', { class: 'flex flex-wrap items-center gap-2' });
+    sysRow.appendChild(JI.el('button', {
+      class: 'ji-btn ji-btn-ghost !text-xs',
+      onclick: () => JI.saveGame && JI.saveGame(),
+    }, '💾 Save Game'));
+    sysRow.appendChild(JI.el('button', {
+      class: 'ji-btn ji-btn-ghost !text-xs',
+      onclick: () => JI.loadGame && JI.loadGame(),
+    }, '📂 Load Game'));
+    sysRow.appendChild(JI.el('button', {
+      class: 'ji-btn !text-xs !bg-rose-600 !text-white hover:!bg-rose-700',
+      onclick: () => JI.resetGame && JI.resetGame(),
+    }, '⟳ Reset Game'));
+    sysRow.appendChild(JI.el('p', { class: 'text-[11px] text-slate-400 ml-auto font-mono' },
+      `Ver. ${JI.STATE_VERSION || '?'}`));
+    panel.appendChild(sysRow);
   }
 
   function statCard({ label, value, sub, accent = 'text-slate-900', mono = false }) {
@@ -362,6 +456,37 @@
       JI.el('p', { class: 'text-xs uppercase tracking-wider text-slate-500' }, label),
       JI.el('p', { class: `${mono ? 'font-mono ' : ''}text-xl sm:text-2xl font-bold mt-1 ${accent}` }, value),
       sub ? JI.el('p', { class: 'text-xs text-slate-400 mt-1' }, sub) : null,
+    ]);
+  }
+
+  function miniStatCard({ label, value, sub, accent = 'text-slate-900', onClick }) {
+    return JI.el('button', {
+      class: 'ji-card p-4 text-left hover:shadow-md transition-shadow w-full',
+      onclick: onClick || (() => {}),
+    }, [
+      JI.el('p', { class: 'text-[10px] uppercase tracking-wider text-slate-500' }, label),
+      JI.el('p', { class: `text-base sm:text-lg font-bold mt-1 font-mono ${accent}` }, value),
+      sub ? JI.el('p', { class: 'text-[10px] text-slate-400 mt-0.5' }, sub) : null,
+    ]);
+  }
+
+  function predictionRow(p) {
+    const dirCls = p.direction === 'up' ? 'text-emerald-600' : 'text-rose-600';
+    const arrow  = p.direction === 'up' ? '▲' : '▼';
+    const conf   = Math.round((p.confidence || 0) * 100);
+    return JI.el('div', { class: 'rounded-lg border border-slate-200 p-3 flex items-center gap-3' }, [
+      JI.el('div', { class: `text-lg font-mono font-bold ${dirCls}` }, arrow),
+      JI.el('div', { class: 'flex-1 min-w-0' }, [
+        JI.el('p', { class: 'font-mono font-bold text-sm' }, p.ticker),
+        JI.el('p', { class: 'text-[11px] text-slate-500 truncate' }, p.name),
+        p.reasons && p.reasons.length ?
+          JI.el('p', { class: 'text-[10px] text-slate-400 truncate mt-0.5' },
+            `${p.reasons[0].icon || '📌'} ${p.reasons[0].headline}`) : null,
+      ]),
+      JI.el('div', { class: 'text-right' }, [
+        JI.el('p', { class: 'text-[10px] uppercase text-slate-400' }, 'Konfiden'),
+        JI.el('p', { class: `text-sm font-mono font-bold ${dirCls}` }, `${conf}%`),
+      ]),
     ]);
   }
 
@@ -611,6 +736,22 @@
     const all = JI.allAssets();
     const list = (_marketFilter === 'all') ? all : all.filter(a => a.category === _marketFilter);
 
+    /* Analyst predictions index — for prediction badge in tables/cards. */
+    const perks = JI.getActivePerks ? JI.getActivePerks(JI.gameState) : { analyst: null };
+    const predIndex = {};
+    if (perks.analyst && JI.predictMarketImpacts) {
+      const preds = JI.predictMarketImpacts(JI.gameState, perks.analyst.predictionCount || 1);
+      preds.forEach((p, i) => { predIndex[p.ticker] = { rank: i + 1, ...p }; });
+    }
+    if (perks.analyst) {
+      panel.appendChild(JI.el('div', {
+        class: 'rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 mb-3 text-xs text-emerald-800 flex items-center gap-2'
+      }, [
+        JI.el('span', { class: 'text-base' }, '📊'),
+        JI.el('span', {}, `Analis ${perks.analyst.tierName} aktif: ${Object.keys(predIndex).length} aset diprediksi (lihat badge ▲ / ▼ pada tabel).`),
+      ]));
+    }
+
     /* Desktop: table; Mobile: stacked cards */
     /* Desktop table */
     const tableWrap = JI.el('div', { class: 'hidden md:block ji-card overflow-hidden' });
@@ -629,9 +770,20 @@
       const trendCls = pct > 0 ? 'text-emerald-600' : pct < 0 ? 'text-rose-600' : 'text-slate-500';
       const arrow   = pct > 0 ? '▲' : pct < 0 ? '▼' : '—';
       const catMeta = JI.CATEGORY[a.category];
+      const pred = predIndex[a.ticker];
+      const predBadge = pred ? JI.el('span', {
+        class: `ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${pred.direction === 'up' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`,
+        title: `Prediksi analis #${pred.rank}: ${pred.direction === 'up' ? 'naik' : 'turun'}`,
+      }, [
+        JI.el('span', {}, pred.direction === 'up' ? '▲' : '▼'),
+        JI.el('span', { class: 'ml-1' }, `#${pred.rank}`),
+      ]) : null;
       tbody.appendChild(JI.el('tr', { class: 'border-t border-slate-100 hover:bg-slate-50' }, [
         JI.el('td', { class: 'px-4 py-3' }, [
-          JI.el('div', { class: 'font-bold font-mono' }, a.ticker),
+          JI.el('div', { class: 'font-bold font-mono flex items-center' }, [
+            JI.el('span', {}, a.ticker),
+            predBadge,
+          ]),
           JI.el('div', { class: 'text-xs text-slate-500' }, a.name),
         ]),
         JI.el('td', { class: 'px-4 py-3' }, [
@@ -658,21 +810,30 @@
 
     /* Mobile cards */
     const mobileList = JI.el('div', { class: 'md:hidden space-y-2' });
-    list.forEach(a => mobileList.appendChild(marketMobileCard(a)));
+    list.forEach(a => mobileList.appendChild(marketMobileCard(a, predIndex[a.ticker])));
     panel.appendChild(mobileList);
   }
 
-  function marketMobileCard(a) {
+  function marketMobileCard(a, pred) {
     const s = JI.gameState;
     const m = s.marketAssets[a.ticker] || { price: a.price, dayChangePct: 0 };
     const pct = m.dayChangePct || 0;
     const trendCls = pct > 0 ? 'text-emerald-600' : pct < 0 ? 'text-rose-600' : 'text-slate-500';
     const arrow   = pct > 0 ? '▲' : pct < 0 ? '▼' : '—';
     const catMeta = JI.CATEGORY[a.category];
+    const predBadge = pred ? JI.el('span', {
+      class: `inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ml-2 ${pred.direction === 'up' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`,
+    }, [
+      JI.el('span', {}, pred.direction === 'up' ? '▲' : '▼'),
+      JI.el('span', { class: 'ml-1' }, `#${pred.rank}`),
+    ]) : null;
     return JI.el('div', { class: 'ji-card p-4' }, [
       JI.el('div', { class: 'flex items-center justify-between gap-3' }, [
         JI.el('div', {}, [
-          JI.el('p', { class: 'font-bold font-mono' }, a.ticker),
+          JI.el('p', { class: 'font-bold font-mono flex items-center' }, [
+            JI.el('span', {}, a.ticker),
+            predBadge,
+          ]),
           JI.el('p', { class: 'text-xs text-slate-500' }, a.name),
         ]),
         JI.el('span', { class: 'text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700' },
@@ -720,11 +881,31 @@
       placeholder: idx.category === 'saham' ? 'Jumlah lembar' : (idx.category === 'crypto' ? 'Jumlah unit (integer)' : 'Jumlah unit'),
       class: 'ji-input',
     });
-    const costPreview = JI.el('p', { class: 'text-xs text-slate-500 font-mono mt-1' }, 'Total: Rp 0');
-    qtyInput.addEventListener('input', () => {
+    const costPreview = JI.el('div', { class: 'text-xs text-slate-500 font-mono mt-1 space-y-0.5' });
+    function updateCostPreview() {
       const q = JI.parseIDRInput(qtyInput.value);
-      costPreview.textContent = `Total: ${JI.formatIDR(JI.calcCost(ticker, q))}`;
-    });
+      costPreview.innerHTML = '';
+      if (!q) {
+        costPreview.appendChild(JI.el('p', {}, 'Masukkan jumlah untuk preview.'));
+        return;
+      }
+      const quote = JI.quoteBuy(JI.gameState, ticker, q);
+      if (!quote) return;
+      const lines = [
+        ['Harga × Qty', JI.formatIDR(quote.grossCost)],
+        [`Fee broker (${(quote.broker.feeRate*100).toFixed(2)}%)`, JI.formatIDR(quote.fee)],
+      ];
+      if (quote.cashback > 0) lines.push([`Cashback (${(quote.broker.cashbackRate*100).toFixed(2)}%)`, `+ ${JI.formatIDR(quote.cashback)}`]);
+      lines.push(['Total tagihan', JI.formatIDR(quote.totalCharge)]);
+      lines.forEach(([k, v]) => {
+        costPreview.appendChild(JI.el('p', { class: 'flex justify-between gap-2' }, [
+          JI.el('span', {}, k),
+          JI.el('span', { class: 'font-bold' }, v),
+        ]));
+      });
+    }
+    qtyInput.addEventListener('input', updateCostPreview);
+    updateCostPreview();
     content.appendChild(labelled('Jumlah', qtyInput));
     content.appendChild(costPreview);
 
@@ -737,7 +918,8 @@
         const qty = JI.parseIDRInput(qtyInput.value);
         const r = JI.buyAsset(s, ticker, qty, ps.getValue());
         if (!r.ok) return JI.toast(r.error, 'error');
-        JI.toast(`Beli ${qty} ${ticker} senilai ${JI.formatIDR(r.totalCost)}.`);
+        const cb = r.cashback > 0 ? ` (cashback +${JI.formatIDR(r.cashback)})` : '';
+        JI.toast(`Beli ${qty} ${ticker} senilai ${JI.formatIDR(r.totalCharge)}${cb}.`);
         closeModal();
         JI.saveState(s);
         JI.renderAll();
@@ -858,6 +1040,90 @@
       ]));
     });
     panel.appendChild(mob);
+
+    /* === Physical Assets summary === */
+    const phys = s.physicalAssets || {};
+    const physTotal = (JI.totalPhysicalValue ? JI.totalPhysicalValue(s) : 0);
+    panel.appendChild(JI.el('h3', { class: 'text-lg font-bold mt-8 mb-3 flex items-center gap-2' },
+      [JI.el('span', { class: 'text-2xl' }, '🏢'), 'Aset Fisik']));
+    const physGrid = JI.el('div', { class: 'grid grid-cols-1 md:grid-cols-3 gap-4 mb-4' });
+    physGrid.appendChild(physBucketCard('Properti Kantor', '🏢', phys.properties));
+    physGrid.appendChild(physBucketCard('Mobil', '🚗', phys.cars));
+    physGrid.appendChild(physBucketCard('Motor', '🏍️', phys.motorcycles));
+    panel.appendChild(physGrid);
+    panel.appendChild(JI.el('div', { class: 'ji-card p-4 flex items-center justify-between' }, [
+      JI.el('div', {}, [
+        JI.el('p', { class: 'text-[11px] uppercase tracking-wider text-slate-500' }, 'Total Aset Fisik'),
+        JI.el('p', { class: 'text-xl font-bold font-mono text-violet-600' }, JI.formatIDR(physTotal)),
+      ]),
+      JI.el('button', {
+        class: 'ji-btn ji-btn-ghost !text-xs',
+        onclick: () => switchTab('aset'),
+      }, 'Buka Dealership →'),
+    ]));
+
+    /* === Lifetime stats: realized PnL, broker fees/cashback, taxes === */
+    const bs = s.brokerStats || { totalFeesPaid: 0, totalCashbackEarned: 0, totalRealizedPnL: 0, profitableSells: 0, losingSells: 0 };
+    const ts = s.taxStats    || { totalPPhPaid: 0, totalAnnualPaid: 0, totalPenaltiesPaid: 0 };
+
+    panel.appendChild(JI.el('h3', { class: 'text-lg font-bold mt-8 mb-3 flex items-center gap-2' },
+      [JI.el('span', { class: 'text-2xl' }, '📊'), 'Statistik Sepanjang Permainan']));
+    const statsGrid = JI.el('div', { class: 'grid grid-cols-2 md:grid-cols-4 gap-3' });
+    statsGrid.appendChild(miniStatCard({
+      label: 'Realized PnL',
+      value: JI.formatIDR(bs.totalRealizedPnL),
+      sub: `${bs.profitableSells} profit / ${bs.losingSells} rugi`,
+      accent: bs.totalRealizedPnL >= 0 ? 'text-emerald-600' : 'text-rose-600',
+    }));
+    statsGrid.appendChild(miniStatCard({
+      label: 'Total Fee Broker',
+      value: JI.formatIDR(bs.totalFeesPaid),
+      sub: 'biaya transaksi yang dibayar',
+      accent: 'text-amber-600',
+    }));
+    statsGrid.appendChild(miniStatCard({
+      label: 'Total Cashback',
+      value: JI.formatIDR(bs.totalCashbackEarned),
+      sub: 'dari Bandar tier',
+      accent: 'text-emerald-600',
+    }));
+    statsGrid.appendChild(miniStatCard({
+      label: 'PPh Final Dipotong',
+      value: JI.formatIDR(ts.totalPPhPaid),
+      sub: '0.1% dari profit jual',
+      accent: 'text-slate-700',
+    }));
+    panel.appendChild(statsGrid);
+  }
+
+  function physBucketCard(label, icon, items) {
+    const total = (items || []).reduce((a, x) => a + (x.value || 0), 0);
+    const card = JI.el('div', { class: 'ji-card p-4' });
+    card.appendChild(JI.el('div', { class: 'flex items-center justify-between mb-2' }, [
+      JI.el('div', { class: 'flex items-center gap-2' }, [
+        JI.el('span', { class: 'text-2xl' }, icon),
+        JI.el('p', { class: 'font-semibold' }, label),
+      ]),
+      JI.el('span', { class: 'text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700' },
+        `${(items || []).length} item`),
+    ]));
+    card.appendChild(JI.el('p', { class: 'font-mono font-bold text-violet-600' }, JI.formatIDR(total)));
+    if (items && items.length) {
+      const list = JI.el('ul', { class: 'mt-2 text-xs text-slate-600 space-y-1' });
+      items.slice(0, 4).forEach(it => {
+        list.appendChild(JI.el('li', { class: 'flex justify-between gap-2' }, [
+          JI.el('span', { class: 'truncate' }, it.name + (it.tier ? ` · ${it.tier}` : '')),
+          JI.el('span', { class: 'font-mono' }, JI.formatIDR(it.value)),
+        ]));
+      });
+      if (items.length > 4) {
+        list.appendChild(JI.el('li', { class: 'text-slate-400 italic' }, `+ ${items.length - 4} item lainnya`));
+      }
+      card.appendChild(list);
+    } else {
+      card.appendChild(JI.el('p', { class: 'mt-1 text-xs text-slate-400' }, 'Belum ada.'));
+    }
+    return card;
   }
 
   function openSellAssetModal(ticker) {
@@ -881,11 +1147,39 @@
       type: 'number', inputmode: 'numeric', min: '1', step: '1',
       max: String(h.qty), placeholder: `Maks ${h.qty}`, class: 'ji-input',
     });
-    const proceedsEl = JI.el('p', { class: 'text-xs text-slate-500 font-mono mt-1' }, 'Hasil: Rp 0');
-    qtyInput.addEventListener('input', () => {
+    const proceedsEl = JI.el('div', { class: 'text-xs text-slate-500 font-mono mt-1 space-y-0.5' });
+    function updateSellPreview() {
       const q = Math.min(JI.parseIDRInput(qtyInput.value), h.qty);
-      proceedsEl.textContent = `Hasil: ${JI.formatIDR(q * m.price)}`;
-    });
+      proceedsEl.innerHTML = '';
+      if (!q) {
+        proceedsEl.appendChild(JI.el('p', {}, 'Masukkan jumlah untuk preview.'));
+        return;
+      }
+      const quote = JI.quoteSell(JI.gameState, ticker, q);
+      if (!quote) return;
+      const lines = [
+        ['Harga × Qty', JI.formatIDR(quote.grossProceeds)],
+        ['Cost basis', `− ${JI.formatIDR(quote.costBasisShare)}`],
+        [`Fee broker (${(quote.broker.feeRate*100).toFixed(2)}%)`, `− ${JI.formatIDR(quote.fee)}`],
+      ];
+      if (quote.pphFinal > 0) lines.push([`PPh Final 0.1%`, `− ${JI.formatIDR(quote.pphFinal)}`]);
+      if (quote.cashback > 0) lines.push([`Cashback`, `+ ${JI.formatIDR(quote.cashback)}`]);
+      lines.push(['Net diterima', JI.formatIDR(quote.netProceeds)]);
+      const pnlCls = quote.grossPnL >= 0 ? 'text-emerald-700' : 'text-rose-700';
+      lines.push(['Gross PnL', `${quote.grossPnL >= 0 ? '+' : ''}${JI.formatIDR(quote.grossPnL)}`]);
+      lines.forEach(([k, v]) => {
+        proceedsEl.appendChild(JI.el('p', { class: 'flex justify-between gap-2' }, [
+          JI.el('span', {}, k),
+          JI.el('span', { class: 'font-bold' + (k === 'Gross PnL' ? ` ${pnlCls}` : '') }, v),
+        ]));
+      });
+      if (quote.grossPnL > 0) {
+        proceedsEl.appendChild(JI.el('p', { class: 'mt-1 text-emerald-700' },
+          `🏆 XP +${50 + Math.floor(quote.grossPnL / 1_000_000)} (50 base + ${Math.floor(quote.grossPnL / 1_000_000)} per 1jt profit).`));
+      }
+    }
+    qtyInput.addEventListener('input', updateSellPreview);
+    updateSellPreview();
     content.appendChild(labelled('Jumlah Dijual', qtyInput));
     content.appendChild(proceedsEl);
 
@@ -899,9 +1193,15 @@
         const q = Math.min(JI.parseIDRInput(qtyInput.value), h.qty);
         const r = JI.sellAsset(s, ticker, q, bankSel.value);
         if (!r.ok) return JI.toast(r.error, 'error');
-        const sign = r.realizedPnL >= 0 ? '+' : '';
-        JI.toast(`Jual ${q} ${ticker}: ${JI.formatIDR(r.proceeds)} (${sign}${JI.formatIDR(r.realizedPnL)}).`,
-          r.realizedPnL >= 0 ? 'success' : 'warning');
+        const sign = r.grossPnL >= 0 ? '+' : '';
+        const xpInfo = r.xpAwarded ? ` · +${r.xpAwarded} XP` : '';
+        JI.toast(
+          `Jual ${q} ${ticker}: net ${JI.formatIDR(r.netProceeds)} (${sign}${JI.formatIDR(r.grossPnL)})${xpInfo}.`,
+          r.grossPnL >= 0 ? 'success' : 'warning'
+        );
+        if (r.levelEvent && r.levelEvent.leveledUp) {
+          JI.showLevelUpAlert(r.levelEvent.newLevel, r.levelEvent.newTitle, r.levelEvent.levelsGained);
+        }
         closeModal();
         JI.saveState(s);
         JI.renderAll();
@@ -1121,6 +1421,333 @@
   }
 
   /* =========================================================================
+     HRD panel
+     ========================================================================= */
+  function renderHRDPanel(panel) {
+    const s = JI.gameState;
+    panel.innerHTML = '';
+
+    const cap   = JI.officeCapacity ? JI.officeCapacity(s) : (s.physicalAssets.officeCapacity || 0);
+    const hired = JI.hiredCount     ? JI.hiredCount(s)     : (s.hiredEmployees || []).length;
+    const slotsAvailable = Math.max(0, cap - hired);
+
+    panel.appendChild(JI.el('div', { class: 'mb-5 flex items-end justify-between flex-wrap gap-3' }, [
+      JI.el('div', {}, [
+        JI.el('h2', { class: 'text-2xl sm:text-3xl font-bold' }, '👥 HRD'),
+        JI.el('p', { class: 'text-slate-500 text-sm mt-1' },
+          'Rekrut karyawan untuk dapat perks pasar, pajak, dan transaksi.'),
+      ]),
+      JI.el('div', { class: 'text-right' }, [
+        JI.el('p', { class: 'text-[10px] uppercase tracking-wider text-slate-500' }, 'Kapasitas'),
+        JI.el('p', { class: 'font-mono font-bold text-lg' }, `${hired} / ${cap}`),
+        JI.el('p', { class: 'text-xs text-slate-500' },
+          slotsAvailable > 0 ? `${slotsAvailable} slot tersedia` :
+          cap === 0 ? 'Beli properti dulu' : 'Penuh'),
+      ]),
+    ]));
+
+    if (cap === 0) {
+      panel.appendChild(JI.el('div', { class: 'rounded-xl border border-amber-200 bg-amber-50 p-4 mb-5 text-sm text-amber-800' }, [
+        JI.el('p', { class: 'font-semibold' }, '⚠ Belum ada kantor'),
+        JI.el('p', { class: 'mt-1' }, 'Beli "Coworking Space" / "Ruko 2 Lantai" / "Gedung SCBD" di tab Aset Fisik dulu untuk menambah kapasitas kantor.'),
+        JI.el('button', {
+          class: 'ji-btn ji-btn-primary !text-xs mt-3',
+          onclick: () => switchTab('aset'),
+        }, 'Buka Aset Fisik →'),
+      ]));
+    }
+
+    const grid = JI.el('div', { class: 'grid grid-cols-1 lg:grid-cols-3 gap-5' });
+    (JI.HRD_ROLES || []).forEach(role => grid.appendChild(renderHRDRoleCard(role)));
+    panel.appendChild(grid);
+
+    /* Active perks summary */
+    const perks = JI.getActivePerks ? JI.getActivePerks(s) : null;
+    if (perks && (perks.analyst || perks.taxConsultant || perks.broker)) {
+      const summary = JI.el('div', { class: 'ji-card p-5 mt-5' });
+      summary.appendChild(JI.el('h3', { class: 'font-bold text-slate-900 mb-3' }, 'Perk Aktif'));
+      const ul = JI.el('ul', { class: 'space-y-2 text-sm' });
+      const desc = JI.describePerks ? JI.describePerks(perks) : [];
+      desc.forEach(d => ul.appendChild(JI.el('li', { class: 'flex items-start gap-2' }, [
+        JI.el('span', { class: 'text-emerald-600' }, '✓'),
+        JI.el('span', {}, d),
+      ])));
+      summary.appendChild(ul);
+      panel.appendChild(summary);
+    }
+  }
+
+  function renderHRDRoleCard(role) {
+    const s = JI.gameState;
+    const employee = JI.getEmployeeOfRole ? JI.getEmployeeOfRole(s, role.key) : null;
+    const cap   = JI.officeCapacity ? JI.officeCapacity(s) : 0;
+    const hired = JI.hiredCount     ? JI.hiredCount(s)     : 0;
+    const canHireSlot = hired < cap;
+
+    const card = JI.el('div', { class: 'ji-card p-5 flex flex-col' });
+    card.appendChild(JI.el('div', { class: 'flex items-start gap-3 mb-3' }, [
+      JI.el('div', { class: 'text-4xl' }, role.icon),
+      JI.el('div', { class: 'flex-1 min-w-0' }, [
+        JI.el('h3', { class: 'font-bold' }, role.label),
+        JI.el('p', { class: 'text-xs text-slate-500' }, role.tagline),
+      ]),
+    ]));
+
+    if (employee) {
+      card.appendChild(JI.el('div', { class: 'rounded-xl border border-emerald-200 bg-emerald-50 p-3 mb-3 text-xs' }, [
+        JI.el('p', { class: 'flex items-center justify-between gap-2' }, [
+          JI.el('span', { class: 'text-emerald-700 font-bold' }, `✓ Tier ${employee.tier} · ${employee.tierName}`),
+          JI.el('span', { class: 'font-mono text-emerald-700' }, JI.formatIDR(employee.salary) + '/bulan'),
+        ]),
+        JI.el('p', { class: 'mt-1 text-slate-600' }, `Direkrut Hari ${employee.hiredOn}`),
+      ]));
+    }
+
+    /* Tiers — show locked/active/available state */
+    const tierList = JI.el('div', { class: 'space-y-2 flex-1' });
+    role.tiers.forEach(tier => {
+      const isActive = employee && employee.tier === tier.tier;
+      tierList.appendChild(JI.el('div', {
+        class: `rounded-xl border p-3 ${isActive ? 'border-emerald-400 bg-emerald-50/40' : 'border-slate-200'}`
+      }, [
+        JI.el('div', { class: 'flex items-start justify-between gap-2 flex-wrap' }, [
+          JI.el('div', {}, [
+            JI.el('p', { class: 'font-semibold text-sm' }, tier.name),
+            JI.el('p', { class: 'text-[11px] text-slate-500' }, tier.summary),
+          ]),
+          JI.el('p', { class: 'font-mono text-xs whitespace-nowrap' },
+            JI.formatIDR(tier.salary) + '/bln'),
+        ]),
+        JI.el('div', { class: 'mt-2 flex flex-wrap gap-2' }, [
+          isActive ? JI.el('span', { class: 'text-[11px] px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold' }, 'Aktif')
+            : (employee
+                ? JI.el('button', {
+                    class: 'ji-btn ji-btn-ghost !text-[11px]',
+                    onclick: () => upgradeEmployee(role, tier),
+                  }, employee.tier > tier.tier ? 'Downgrade ke tier ini' : 'Upgrade ke tier ini')
+                : JI.el('button', {
+                    class: 'ji-btn ji-btn-success !text-[11px]',
+                    disabled: !canHireSlot ? '' : null,
+                    onclick: () => doHire(role, tier),
+                  }, canHireSlot ? 'Rekrut' : 'Kapasitas penuh')),
+        ]),
+      ]));
+    });
+    card.appendChild(tierList);
+
+    if (employee) {
+      card.appendChild(JI.el('button', {
+        class: 'ji-btn ji-btn-ghost !text-xs mt-3 !text-rose-600 !border-rose-300 hover:!bg-rose-50',
+        onclick: () => doFire(employee),
+      }, '✕ Pecat karyawan ini'));
+    }
+    return card;
+  }
+
+  function doHire(role, tier) {
+    const r = JI.hireEmployee(JI.gameState, role.key, tier.tier);
+    if (!r.ok) return JI.toast(r.error, 'error');
+    JI.toast(`Berhasil merekrut ${tier.name} (${role.label}).`, 'success');
+    JI.saveState(JI.gameState);
+    JI.renderAll();
+  }
+  function doFire(employee) {
+    if (!confirm(`Pecat ${employee.tierName} (${employee.roleLabel})? Slot kapasitas akan dibebaskan.`)) return;
+    const r = JI.fireEmployee(JI.gameState, employee.id);
+    if (!r.ok) return JI.toast(r.error, 'error');
+    JI.toast(`${employee.tierName} dipecat.`, 'warning');
+    JI.saveState(JI.gameState);
+    JI.renderAll();
+  }
+  function upgradeEmployee(role, tier) {
+    const cur = JI.getEmployeeOfRole(JI.gameState, role.key);
+    if (!cur) return;
+    if (!confirm(`Ganti dari ${cur.tierName} ke ${tier.name}? Karyawan lama akan dipecat dulu.`)) return;
+    JI.fireEmployee(JI.gameState, cur.id);
+    const r = JI.hireEmployee(JI.gameState, role.key, tier.tier);
+    if (!r.ok) {
+      JI.toast(r.error, 'error');
+      // Try to re-hire the old one to avoid leaving a gap
+      JI.hireEmployee(JI.gameState, cur.role, cur.tier);
+    } else {
+      JI.toast(`Sekarang: ${tier.name} (${role.label}).`, 'success');
+    }
+    JI.saveState(JI.gameState);
+    JI.renderAll();
+  }
+
+  /* =========================================================================
+     CoreTax DJP panel
+     ========================================================================= */
+  function renderCoreTaxPanel(panel) {
+    const s = JI.gameState;
+    panel.innerHTML = '';
+
+    const open = JI.listOpenLiabilities ? JI.listOpenLiabilities(s) : [];
+    const paid = JI.listPaidLiabilities ? JI.listPaidLiabilities(s, 20) : [];
+    const totalUnpaid = JI.totalUnpaidTax ? JI.totalUnpaidTax(s) : 0;
+    const stats = s.taxStats || { totalPPhPaid: 0, totalAnnualPaid: 0, totalPenaltiesPaid: 0 };
+    const consultant = JI.getTaxConsultant ? JI.getTaxConsultant(s) : null;
+    const annualRate = JI.effectiveAnnualRate ? JI.effectiveAnnualRate(s) : 0.01;
+    const nextDay = JI.nextAnnualAssessmentDay ? JI.nextAnnualAssessmentDay(s) : (s.totalDays + 30);
+
+    panel.appendChild(JI.el('div', { class: 'mb-5' }, [
+      JI.el('h2', { class: 'text-2xl sm:text-3xl font-bold' }, '🧾 CoreTax DJP'),
+      JI.el('p', { class: 'text-slate-500 text-sm mt-1' },
+        'PPh Final 0.1% atas profit jual aset (otomatis dipotong). Pajak Tahunan dinilai tiap 30 hari. Denda 2%/hari mulai 10 hari setelah jatuh tempo (kecuali ada Konsultan Pajak).'),
+    ]));
+
+    /* Top stats */
+    const grid = JI.el('div', { class: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6' });
+    grid.appendChild(statCard({
+      label: 'Total Tagihan Belum Bayar',
+      value: JI.formatIDR(totalUnpaid),
+      sub: `${open.length} tagihan terbuka`,
+      accent: totalUnpaid > 0 ? 'text-rose-600' : 'text-emerald-600',
+    }));
+    grid.appendChild(statCard({
+      label: 'Tarif Pajak Tahunan',
+      value: `${(annualRate * 100).toFixed(1)}%`,
+      sub: consultant ? `Berkat ${consultant.tierName}` : 'Tarif default 1%',
+      accent: 'text-slate-900',
+    }));
+    grid.appendChild(statCard({
+      label: 'Pajak Tahunan Dibayar',
+      value: JI.formatIDR(stats.totalAnnualPaid),
+      sub: 'lifetime',
+      accent: 'text-blue-600',
+    }));
+    grid.appendChild(statCard({
+      label: 'PPh Final Dipotong',
+      value: JI.formatIDR(stats.totalPPhPaid),
+      sub: 'lifetime',
+      accent: 'text-violet-600',
+    }));
+    panel.appendChild(grid);
+
+    /* Consultant status */
+    panel.appendChild(JI.el('div', {
+      class: `rounded-xl border p-4 mb-5 text-sm ${consultant ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`
+    }, [
+      JI.el('p', { class: consultant ? 'text-emerald-800 font-semibold' : 'text-slate-700 font-semibold' },
+        consultant
+          ? `🧾 Konsultan Pajak Aktif: ${consultant.tierName}`
+          : '🧾 Belum ada Konsultan Pajak'),
+      JI.el('p', { class: 'text-xs mt-1 text-slate-600' },
+        consultant
+          ? `Tarif pajak tahunan turun ke ${(annualRate*100).toFixed(1)}% dan denda 2%/hari dinonaktifkan.`
+          : 'Tanpa konsultan, pajak tahunan 1% NW dan denda 2%/hari berlaku setelah 10 hari overdue.'),
+      consultant ? null : JI.el('button', {
+        class: 'ji-btn ji-btn-primary !text-xs mt-3',
+        onclick: () => switchTab('hrd'),
+      }, 'Sewa di HRD →'),
+    ]));
+
+    panel.appendChild(JI.el('p', { class: 'text-xs text-slate-500 font-mono mb-3' },
+      `Penilaian pajak tahunan berikutnya: Hari ${nextDay}.`));
+
+    /* Open liabilities */
+    panel.appendChild(JI.el('h3', { class: 'font-bold text-slate-900 mb-3' }, 'Tagihan Terbuka'));
+    if (!open.length) {
+      panel.appendChild(JI.el('div', { class: 'ji-card p-6 text-center text-slate-500 text-sm mb-6' },
+        '✓ Tidak ada tagihan pajak yang belum dibayar.'));
+    } else {
+      const openWrap = JI.el('div', { class: 'space-y-3 mb-6' });
+      open.forEach(l => openWrap.appendChild(taxLiabilityRow(l, true)));
+      panel.appendChild(openWrap);
+    }
+
+    /* History */
+    if (paid.length) {
+      panel.appendChild(JI.el('h3', { class: 'font-bold text-slate-900 mb-3' }, 'Riwayat Pembayaran'));
+      const histWrap = JI.el('div', { class: 'space-y-2' });
+      paid.forEach(l => histWrap.appendChild(taxLiabilityRow(l, false)));
+      panel.appendChild(histWrap);
+    }
+  }
+
+  function taxLiabilityRow(liab, isOpen) {
+    const s = JI.gameState;
+    const overdueDays = isOpen ? Math.max(0, s.totalDays - liab.dueDay) : 0;
+    const overdue = overdueDays > 0;
+    const grace = (JI.PENALTY_GRACE_DAYS || 10);
+    const penaltyActive = overdueDays > grace;
+
+    const row = JI.el('div', {
+      class: `rounded-xl border p-4 ${
+        !isOpen        ? 'border-slate-200 bg-slate-50 opacity-90' :
+        penaltyActive  ? 'border-rose-300 bg-rose-50' :
+        overdue        ? 'border-amber-300 bg-amber-50' :
+        'border-slate-200 bg-white'
+      }`
+    });
+    row.appendChild(JI.el('div', { class: 'flex items-start justify-between flex-wrap gap-2' }, [
+      JI.el('div', {}, [
+        JI.el('p', { class: 'font-semibold' }, liab.label || 'Pajak Tahunan'),
+        JI.el('p', { class: 'text-xs text-slate-500' },
+          `Dibuat Hari ${liab.createdDay} · Jatuh tempo Hari ${liab.dueDay} · Tarif ${liab.ratePctApplied}% NW`),
+      ]),
+      JI.el('div', { class: 'text-right' }, [
+        JI.el('p', { class: 'text-[10px] uppercase tracking-wider text-slate-500' },
+          isOpen ? 'Tagihan Sekarang' : 'Lunas'),
+        JI.el('p', { class: `text-lg font-mono font-bold ${isOpen ? (penaltyActive ? 'text-rose-700' : 'text-slate-900') : 'text-emerald-700'}` },
+          JI.formatIDR(isOpen ? liab.owedAmount : (liab.paid || liab.baseAmount))),
+      ]),
+    ]));
+    if (liab.penaltyAccrued > 0) {
+      row.appendChild(JI.el('p', { class: 'text-xs mt-2 text-rose-700' },
+        `Termasuk denda akumulatif: ${JI.formatIDR(liab.penaltyAccrued)}.`));
+    }
+    if (isOpen) {
+      if (overdueDays > 0) {
+        row.appendChild(JI.el('p', { class: 'text-xs mt-1 ' + (penaltyActive ? 'text-rose-700' : 'text-amber-700') },
+          penaltyActive
+            ? `Lewat ${overdueDays} hari · denda 2%/hari aktif.`
+            : `Lewat ${overdueDays} hari (grace ${grace} hari sebelum denda).`));
+      }
+      row.appendChild(JI.el('button', {
+        class: 'ji-btn ji-btn-success w-full mt-3 !text-sm',
+        onclick: () => openPayTaxModal(liab),
+      }, `Bayar ${JI.formatIDR(liab.owedAmount)}`));
+    } else {
+      row.appendChild(JI.el('p', { class: 'text-xs mt-1 text-slate-500' },
+        `Dibayar Hari ${liab.paidDay} via ${liab.paidVia === 'credit' ? 'Kartu Kredit' : 'Saldo Bank'}.`));
+    }
+    return row;
+  }
+
+  function openPayTaxModal(liab) {
+    const s = JI.gameState;
+    const content = JI.el('div', { class: 'space-y-4' });
+    content.appendChild(JI.el('div', { class: 'rounded-xl bg-slate-50 p-4' }, [
+      JI.el('p', { class: 'font-semibold' }, liab.label),
+      JI.el('p', { class: 'text-xs text-slate-500 mt-1' },
+        `Pokok ${JI.formatIDR(liab.baseAmount)}` +
+        (liab.penaltyAccrued > 0 ? ` + denda ${JI.formatIDR(liab.penaltyAccrued)}` : '')),
+      JI.el('p', { class: 'mt-3 text-2xl font-mono font-bold' },
+        JI.formatIDR(liab.owedAmount)),
+    ]));
+
+    const ps = paymentSelector({ allowCredit: true });
+    content.appendChild(ps.container);
+
+    const btn = JI.el('button', {
+      class: 'ji-btn ji-btn-success w-full',
+      onclick: () => {
+        const r = JI.payTax(s, liab.id, ps.getValue());
+        if (!r.ok) return JI.toast(r.error, 'error');
+        JI.toast(`Pajak ${JI.formatIDR(r.paid)} berhasil dibayar.`, 'success');
+        closeModal();
+        JI.saveState(s);
+        JI.renderAll();
+      },
+    }, 'Konfirmasi Pembayaran');
+    content.appendChild(btn);
+
+    openModal('Bayar Pajak', content);
+  }
+
+  /* =========================================================================
      Small UI helpers
      ========================================================================= */
   function sectionTitle(title, sub) {
@@ -1169,5 +1796,6 @@
     openBuyAssetModal,
     openSellAssetModal,
     openBuyPhysicalModal,
+    openPayTaxModal,
   });
 })(window);

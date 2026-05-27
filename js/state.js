@@ -8,32 +8,45 @@
   const JI = global.JI || (global.JI = {});
 
   const STORAGE_KEY = 'juragan_investasi_state_v1';
-  const STATE_VERSION = 2; // bumped in Phase 2
+  const STATE_VERSION = 3; // Phase 3
   const STARTING_CAPITAL = 150_000_000; // Rp 150jt
+  const DAILY_OPS_COST  = 150_000;      // Rp 150rb / day
 
-  /* ---------- Company titles by level ---------- */
-  const COMPANY_TITLES = [
-    /* L1  */ 'CV. Pemula',
-    /* L2  */ 'CV. Berkembang',
-    /* L3  */ 'PT. Investor Muda',
-    /* L4  */ 'PT. Mitra Modal',
-    /* L5  */ 'PT. Juragan Investasi',
-    /* L6  */ 'PT. Holding Nusantara',
-    /* L7  */ 'PT. Tycoon Capital',
-    /* L8  */ 'PT. Conglomerate Group',
-    /* L9  */ 'PT. Magnate Holdings',
-    /* L10 */ 'PT. Imperium Kapitalis',
+  /* ---------- Company titles by level (Phase 3 spec) ----------
+     Level 1-3   : Retail Trader
+     Level 4-6   : Boutique Firm
+     Level 7-9   : Hedge Fund
+     Level 10+   : Conglomerate Tycoon
+  */
+  const TITLE_TIERS = [
+    { min: 1,  max: 3,        title: 'Retail Trader',      icon: '👤' },
+    { min: 4,  max: 6,        title: 'Boutique Firm',      icon: '🏢' },
+    { min: 7,  max: 9,        title: 'Hedge Fund',         icon: '💎' },
+    { min: 10, max: Infinity, title: 'Conglomerate Tycoon',icon: '👑' },
   ];
 
-  /* XP needed to reach next level (index = current level - 1). */
+  /* Kept for backward compatibility — populated as a flat list. */
+  const COMPANY_TITLES = [
+    'Retail Trader','Retail Trader','Retail Trader',
+    'Boutique Firm','Boutique Firm','Boutique Firm',
+    'Hedge Fund','Hedge Fund','Hedge Fund',
+    'Conglomerate Tycoon',
+  ];
+
+  /* XP curve per Phase 3 spec: companyXP >= companyLevel * 1000. */
   function xpToNext(level) {
-    // Smooth curve: 1000, 2500, 5000, 8500, 13000, ...
-    return 500 * level * (level + 1);
+    return Math.max(1, Math.floor(level)) * 1000;
   }
 
   function getCompanyTitle(level) {
-    const idx = JI.clamp(level - 1, 0, COMPANY_TITLES.length - 1);
-    return COMPANY_TITLES[idx];
+    const tier = TITLE_TIERS.find(t => level >= t.min && level <= t.max)
+              || TITLE_TIERS[TITLE_TIERS.length - 1];
+    return tier.title;
+  }
+
+  function getCompanyTitleTier(level) {
+    return TITLE_TIERS.find(t => level >= t.min && level <= t.max)
+        || TITLE_TIERS[TITLE_TIERS.length - 1];
   }
 
   /* ---------- Default state factory ---------- */
@@ -59,9 +72,18 @@
       dailyNews: [],             // current day's news (subset of newsHistory)
       lastNewsDay: 0,
 
-      taxLiabilities: [],
-      hiredEmployees: [],
+      // Tax (Phase 3)
+      taxLiabilities: [],        // [{id, type, baseAmount, owedAmount, dueDay, paid, paidDay, createdDay}]
+      taxStats: {
+        totalPPhPaid: 0,
+        totalAnnualPaid: 0,
+        totalPenaltiesPaid: 0,
+      },
 
+      // HRD (Phase 3)
+      hiredEmployees: [],        // [{id, role, tier, salary, hiredOn}]
+
+      // Physical assets
       physicalAssets: {
         properties:    [],       // [{instanceId, key, name, capacity, value, purchaseDay}]
         cars:          [],
@@ -72,6 +94,18 @@
       // Company progression
       companyLevel: 1,
       companyXP: 0,
+
+      // Lifetime broker / market metrics (Phase 3)
+      brokerStats: {
+        totalFeesPaid: 0,
+        totalCashbackEarned: 0,
+        totalRealizedPnL: 0,
+        profitableSells: 0,
+        losingSells: 0,
+      },
+
+      // Bookkeeping for the day-loop
+      lastMonthProcessed: 0,     // last "month index" for which monthly ops ran
 
       // UI
       activeTab: 'home',
@@ -138,17 +172,25 @@
     return state.totalNetWorth;
   }
 
-  /* ---------- XP / Level ---------- */
+  /* ---------- XP / Level (Phase 3 spec) ----------
+     Threshold: companyLevel * 1000.
+     Returns: { leveledUp, levelsGained, newLevel, newTitle }
+  */
   function awardXP(state, amount) {
     state.companyXP += Math.max(0, Math.floor(amount));
-    let leveled = false;
-    while (state.companyLevel < COMPANY_TITLES.length &&
-           state.companyXP >= xpToNext(state.companyLevel)) {
+    let levelsGained = 0;
+    while (state.companyXP >= xpToNext(state.companyLevel)) {
       state.companyXP -= xpToNext(state.companyLevel);
       state.companyLevel += 1;
-      leveled = true;
+      levelsGained += 1;
+      if (state.companyLevel > 99) break; // safety
     }
-    return leveled;
+    return {
+      leveledUp: levelsGained > 0,
+      levelsGained,
+      newLevel: state.companyLevel,
+      newTitle: getCompanyTitle(state.companyLevel),
+    };
   }
 
   /* ---------- Migration ---------- */
@@ -177,6 +219,13 @@
     state.dailyNews      = state.dailyNews      || [];
     if (typeof state.lastNewsDay !== 'number') state.lastNewsDay = 0;
 
+    // Phase 3 fields
+    state.taxLiabilities = state.taxLiabilities || [];
+    state.taxStats       = state.taxStats       || def.taxStats;
+    state.hiredEmployees = state.hiredEmployees || [];
+    state.brokerStats    = state.brokerStats    || def.brokerStats;
+    if (typeof state.lastMonthProcessed !== 'number') state.lastMonthProcessed = 0;
+
     state.version = STATE_VERSION;
     return state;
   }
@@ -196,10 +245,13 @@
   /* ---------- Expose ---------- */
   Object.assign(JI, {
     STARTING_CAPITAL,
+    DAILY_OPS_COST,
     STATE_VERSION,
     COMPANY_TITLES,
+    TITLE_TIERS,
     xpToNext,
     getCompanyTitle,
+    getCompanyTitleTier,
     defaultState,
     loadState,
     saveState,
