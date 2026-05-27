@@ -26,7 +26,6 @@
 
   /* XP needed to reach next level (index = current level - 1). */
   function xpToNext(level) {
-    // Smooth curve: 1000, 2500, 5000, 8500, 13000, ...
     return 500 * level * (level + 1);
   }
 
@@ -35,27 +34,47 @@
     return COMPANY_TITLES[idx];
   }
 
+  /* Display title accounts for IPO state. */
+  function getDisplayTitle(state) {
+    if (state && state.ipo && state.ipo.isPublic) return 'Public Listed Company';
+    return getCompanyTitle(state ? state.companyLevel : 1);
+  }
+
   /* ---------- Default state factory ---------- */
   function defaultState() {
     return {
-      version: 1,
+      version: 2,
       totalDays: 1,
       totalNetWorth: STARTING_CAPITAL,
 
-      // Banks created by banking.js init when state is fresh.
       banks: [],
 
-      // Phase 2/3 placeholders
-      portfolio: [],          // {ticker, qty, avgPrice, ...}
-      newsHistory: [],        // [{day, headline, body, impact}]
-      taxLiabilities: [],     // [{day, type, amount, paid}]
-      hiredEmployees: [],     // [{id, role, salary, hiredOn}]
+      portfolio: [],
+      newsHistory: [],
+      taxLiabilities: [],
+      hiredEmployees: [],
       physicalAssets: {
-        properties:    [],    // [{id, name, value, ...}]
+        properties:    [],
         cars:          [],
         motorcycles:   [],
         officeCapacity: 0,
       },
+
+      // Phase 4
+      vc: {
+        activeStartups: [],   // [{id,name,sector,seekingAmount,refreshedOn}]
+        lastRotationDay: 0,
+        investments: [],      // [{id, startupId, startupName, sector, amount, openedDay, maturityDay, lockDays, fromBankId}]
+        maturedHistory: [],   // [{startupName, outcome, multiplier, originalAmount, payout, day}]
+      },
+      ipo: {
+        isPublic: false,
+        ipoDay: null,
+        lastDividendDay: null,
+      },
+      market: null,           // initialized by market.js
+      activeEventModifier: null, // {eventId, day, expiresInDays, modifier}
+      eventHistory: [],       // [{day, eventId, title}]
 
       // Company progression
       companyLevel: 1,
@@ -93,9 +112,45 @@
     localStorage.removeItem(STORAGE_KEY);
   }
 
+  /* ---------- Migration: ensure new fields on older states ---------- */
+  function migrateState(state) {
+    if (!state) return state;
+
+    if (typeof state.totalDays !== 'number') state.totalDays = 1;
+    if (!Array.isArray(state.banks)) state.banks = [];
+
+    // Bank-level new fields
+    state.banks.forEach(b => {
+      if (!Array.isArray(b.history)) b.history = [];
+      if (!Array.isArray(b.depositos)) b.depositos = [];
+    });
+
+    if (!state.physicalAssets) {
+      state.physicalAssets = { properties: [], cars: [], motorcycles: [], officeCapacity: 0 };
+    }
+    if (typeof state.physicalAssets.officeCapacity !== 'number') {
+      state.physicalAssets.officeCapacity = 0;
+    }
+    if (!Array.isArray(state.hiredEmployees)) state.hiredEmployees = [];
+
+    if (!state.vc) {
+      state.vc = { activeStartups: [], lastRotationDay: 0, investments: [], maturedHistory: [] };
+    }
+    if (!state.ipo) {
+      state.ipo = { isPublic: false, ipoDay: null, lastDividendDay: null };
+    }
+    if (state.activeEventModifier === undefined) state.activeEventModifier = null;
+    if (!Array.isArray(state.eventHistory)) state.eventHistory = [];
+
+    // Market initialized later by market.js (needs JI.makeDefaultMarket)
+    state.version = 2;
+    return state;
+  }
+
   /* ---------- Net worth recompute ----------
-     Phase 1 scope: banks balance - active loan remaining.
-     (Portfolio/assets folded in during later phases.)
+     Banks balance + portfolio (stocks/crypto) + physical assets + VC at-risk amount
+     − active loan remaining − credit card debt − active deposito principal (locked but counted as asset).
+     Note: deposito principal is a locked bank asset — we count it as part of net worth.
   */
   function recomputeNetWorth(state) {
     const bankSum = (state.banks || []).reduce((a, b) => a + (b.balance || 0), 0);
@@ -107,7 +162,29 @@
       (a, b) => a + (b.creditCard ? b.creditCard.used || 0 : 0),
       0
     );
-    state.totalNetWorth = bankSum - loanDebt - ccDebt;
+    const depositoLocked = (state.banks || []).reduce(
+      (a, b) => a + ((b.depositos || []).reduce(
+        (x, d) => x + (d.isMatured ? 0 : d.principal), 0)),
+      0
+    );
+
+    let portfolioValue = 0;
+    if (state.portfolio && state.market) {
+      state.portfolio.forEach(pos => {
+        const asset = JI.findMarketAsset && JI.findMarketAsset(state, pos.ticker);
+        if (asset) portfolioValue += pos.qty * asset.price;
+      });
+    }
+
+    let assetValue = 0;
+    if (state.physicalAssets && Array.isArray(state.physicalAssets.properties)) {
+      assetValue += state.physicalAssets.properties.reduce((a, p) => a + (p.value || 0), 0);
+    }
+
+    const vcAtRisk = (state.vc && Array.isArray(state.vc.investments))
+      ? state.vc.investments.reduce((a, i) => a + (i.amount || 0), 0) : 0;
+
+    state.totalNetWorth = bankSum + depositoLocked + portfolioValue + assetValue + vcAtRisk - loanDebt - ccDebt;
     return state.totalNetWorth;
   }
 
@@ -127,8 +204,10 @@
   /* ---------- Bootstrap ---------- */
   function initState() {
     let state = loadState();
-    if (!state || state.version !== 1) {
+    if (!state) {
       state = defaultState();
+    } else {
+      state = migrateState(state);
     }
     JI.gameState = state;
     return state;
@@ -140,10 +219,12 @@
     COMPANY_TITLES,
     xpToNext,
     getCompanyTitle,
+    getDisplayTitle,
     defaultState,
     loadState,
     saveState,
     resetState,
+    migrateState,
     recomputeNetWorth,
     awardXP,
     initState,

@@ -265,3 +265,264 @@ input[type=number]::-webkit-inner-spin-button {
   -webkit-appearance: none; margin: 0;
 }
 input[type=number] { -moz-appearance: textfield; }
+
+
+/* =========================================================================
+   PHASE 4 — Floating Next Day, IPO badge, Mutasi Rekening, VC outcomes,
+   Black Swan modal.
+   ========================================================================= */
+
+/* ---------- Floating "Next Day" action button ---------- */
+.next-day-fab {
+  position: fixed;
+  right: 1rem;
+  bottom: 5rem; /* above mobile bottom nav */
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 1rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #10b981, #047857);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 14px 32px -10px rgba(5, 150, 105, 0.55),
+              0 4px 12px -2px rgba(15, 23, 42, 0.25);
+  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+  cursor: pointer;
+  border: 2px solid rgba(255,255,255,0.15);
+}
+.next-day-fab:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.next-day-fab:active { transform: translateY(1px) scale(0.98); }
+.next-day-fab .nd-icon { font-size: 1.1rem; }
+.next-day-fab .nd-label { line-height: 1; text-align: left; }
+
+@media (min-width: 768px) {
+  .next-day-fab {
+    bottom: 1.5rem;
+    right: 1.5rem;
+    padding: 0.85rem 1.25rem;
+  }
+}
+
+/* ---------- IPO badge ---------- */
+.ipo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fde047, #f59e0b);
+  color: #422006;
+  box-shadow: 0 6px 18px -8px rgba(217,119,6,0.6);
+}
+
+.ipo-card {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(16,185,129,0.08), transparent 50%),
+    #ffffff;
+  border: 1px solid rgba(16,185,129,0.18);
+}
+
+/* ---------- Mutasi Rekening (bank history) ---------- */
+.mutasi-list {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.6rem;
+  background: #fff;
+}
+.mutasi-list::-webkit-scrollbar { width: 6px; }
+.mutasi-list::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.18); border-radius: 999px; }
+
+.mutasi-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+.mutasi-row:last-child { border-bottom: none; }
+.mutasi-row.in  { background: linear-gradient(90deg, rgba(16,185,129,0.06), transparent); }
+.mutasi-row.out { background: linear-gradient(90deg, rgba(239,68,68,0.06), transparent); }
+
+.mutasi-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+.mutasi-type {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  width: 2.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+}
+.mutasi-row.in  .mutasi-type { background: #d1fae5; color: #047857; }
+.mutasi-row.out .mutasi-type { background: #fee2e2; color: #b91c1c; }
+
+.mutasi-desc { min-width: 0; }
+.mutasi-desc p:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mutasi-amount {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.mutasi-row.in  .mutasi-amount { color: #047857; }
+.mutasi-row.out .mutasi-amount { color: #b91c1c; }
+
+/* ---------- VC startup card ---------- */
+.vc-card {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(139,92,246,0.06), transparent 50%),
+    #ffffff;
+  border: 1px solid rgba(139,92,246,0.15);
+}
+
+.vc-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.6rem;
+  border: 1px solid #e2e8f0;
+}
+.vc-out-bad  { background: linear-gradient(90deg, rgba(239,68,68,0.06), #fff);
+               border-color: rgba(239,68,68,0.25); color: #7f1d1d; }
+.vc-out-good { background: linear-gradient(90deg, rgba(16,185,129,0.08), #fff);
+               border-color: rgba(16,185,129,0.30); color: #064e3b; }
+.vc-out-best { background: linear-gradient(90deg, rgba(217,70,239,0.10),
+                                                 rgba(99,102,241,0.10), #fff);
+               border-color: rgba(168,85,247,0.40); color: #4a044e; }
+
+/* ---------- Black Swan / IPO dramatic overlay ---------- */
+.blackswan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 6, 23, 0.92);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: bsFadeIn 0.35s ease-out;
+  padding: 1.25rem;
+}
+
+.blackswan-overlay.severity-red    { background: radial-gradient(circle at 50% 50%, rgba(127,29,29,0.85), rgba(2,6,23,0.96)); }
+.blackswan-overlay.severity-amber  { background: radial-gradient(circle at 50% 50%, rgba(120,53,15,0.85), rgba(2,6,23,0.96)); }
+.blackswan-overlay.severity-green  { background: radial-gradient(circle at 50% 50%, rgba(6,78,59,0.85),  rgba(2,6,23,0.96)); }
+
+@keyframes bsFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bsZoom   {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes bsShake  {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(-6px); }
+  40%  { transform: translateX(6px); }
+  60%  { transform: translateX(-4px); }
+  80%  { transform: translateX(4px); }
+  100% { transform: translateX(0); }
+}
+
+.blackswan-dramatic {
+  max-width: 540px;
+  width: 100%;
+  text-align: center;
+  color: #f8fafc;
+  padding: 2rem 1.75rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(15, 23, 42, 0.65);
+  box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7);
+  animation: bsZoom 0.4s ease-out, bsShake 0.6s ease-in-out 0.4s;
+}
+
+.blackswan-icon {
+  font-size: 4rem;
+  line-height: 1;
+  margin-bottom: 0.6rem;
+  filter: drop-shadow(0 6px 16px rgba(255,255,255,0.15));
+}
+.blackswan-tag {
+  font-size: 0.7rem;
+  letter-spacing: 0.45em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+  margin-bottom: 0.6rem;
+}
+.blackswan-title {
+  font-size: 1.6rem;
+  letter-spacing: 0.05em;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+  color: #fff;
+}
+.severity-red    .blackswan-title { color: #fecaca; text-shadow: 0 0 30px rgba(239,68,68,0.4); }
+.severity-amber  .blackswan-title { color: #fcd34d; text-shadow: 0 0 30px rgba(245,158,11,0.4); }
+.severity-green  .blackswan-title { color: #6ee7b7; text-shadow: 0 0 30px rgba(16,185,129,0.4); }
+
+.blackswan-headline {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+  color: #e2e8f0;
+}
+.blackswan-body {
+  font-size: 0.92rem;
+  color: #cbd5e1;
+  line-height: 1.55;
+  margin-bottom: 1rem;
+}
+.blackswan-date {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin-bottom: 1.25rem;
+  letter-spacing: 0.08em;
+}
+
+.blackswan-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.7rem 1.4rem;
+  font-weight: 700;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #0f172a;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.05s;
+  border: none;
+  font-size: 0.85rem;
+}
+.blackswan-dismiss:hover  { filter: brightness(0.96); }
+.blackswan-dismiss:active { transform: translateY(1px); }
+
+@media (min-width: 768px) {
+  .blackswan-icon  { font-size: 5rem; }
+  .blackswan-title { font-size: 2rem; }
+}

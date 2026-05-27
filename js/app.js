@@ -45,20 +45,28 @@
   }
 
   function bootstrap() {
-    // 1. Init state and banks
+    // 1. Init state
     JI.initState();
+
+    // 2. Init banks (creates them if missing, otherwise just refreshes tiers)
     JI.initBanks(JI.gameState);
+
+    // 3. Phase 4 sub-system inits
+    JI.ensureMarket(JI.gameState);
+    JI.maybeRotateVC(JI.gameState);
+
+    // 4. Net worth + persist
     JI.recomputeNetWorth(JI.gameState);
     JI.saveState(JI.gameState);
 
-    // 2. Build static UI scaffolding
+    // 5. Build static UI scaffolding
     JI.buildTabs();
     JI.bindGlobalEvents();
 
-    // 3. Render the active tab
+    // 6. Render the active tab + Next-Day FAB
     JI.renderAll();
 
-    // 4. Periodic header refresh (clock + net worth display) every 30s.
+    // 7. Periodic header refresh (clock + net worth display) every 30s.
     setInterval(JI.renderHeader, 30_000);
   }
 

@@ -1,5 +1,6 @@
 /* =========================================================================
-   banking.js — Bank engine: 3 banks, transfer, credit card, KTA loan.
+   banking.js — Bank engine: 3 banks, transfer, credit card, KTA loan,
+   cash-flow audit (history), helper credit/debit, helpers used by Phase 4.
    ========================================================================= */
 
 (function (global) {
@@ -53,14 +54,9 @@
     })[tier] || 'tier-reguler';
   }
 
-  /* ---------- Credit card rules ----------
-     Approval & limit are based on current bank balance.
-     Limit = 50% of balance, capped at Rp 100,000,000.
-     Minimum balance to qualify: Rp 5,000,000.
-  */
+  /* ---------- Credit card / Loan rules (unchanged from Phase 1) ---------- */
   const CC_MIN_BALANCE = 5_000_000;
   const CC_MAX_LIMIT   = 100_000_000;
-
   function creditCardOffer(balance) {
     if (balance < CC_MIN_BALANCE) {
       return { eligible: false, limit: 0, reason: 'Saldo minimum Rp 5.000.000 untuk pengajuan kartu kredit.' };
@@ -69,18 +65,11 @@
     return { eligible: true, limit };
   }
 
-  /* ---------- Loan (KTA) rules ----------
-     Max principal = 2 x current balance.
-     Flat interest 5% over a 30-day term.
-     totalRepay = principal * 1.05; daily = totalRepay / 30.
-  */
   const LOAN_INTEREST_FLAT = 0.05;
   const LOAN_TERM_DAYS = 30;
-
   function maxLoanPrincipal(balance) {
     return Math.max(0, Math.floor(balance * 2));
   }
-
   function quoteLoan(principal) {
     const p = Math.max(0, Math.floor(principal || 0));
     const totalRepay = Math.round(p * (1 + LOAN_INTEREST_FLAT));
@@ -105,19 +94,13 @@
       tagline: def.tagline,
       balance: balance,
       debitTier: debitTierFor(balance),
-      creditCard: {
-        isApproved: false,
-        limit: 0,
-        used: 0,
-      },
+      creditCard: { isApproved: false, limit: 0, used: 0 },
       loan: {
-        isActive: false,
-        principal: 0,
-        remaining: 0,
-        dailyInstallment: 0,
-        daysRemaining: 0,
-        startedOnDay: 0,
+        isActive: false, principal: 0, remaining: 0,
+        dailyInstallment: 0, daysRemaining: 0, startedOnDay: 0,
       },
+      history: [],
+      depositos: [],
     };
   }
 
@@ -125,14 +108,22 @@
   function initBanks(state) {
     if (!state) return;
     if (state.banks && state.banks.length === BANK_DEFS.length) {
-      // Already initialized — just refresh tiers in case rules changed.
-      state.banks.forEach(b => (b.debitTier = debitTierFor(b.balance)));
+      state.banks.forEach(b => {
+        b.debitTier = debitTierFor(b.balance);
+        if (!Array.isArray(b.history))   b.history = [];
+        if (!Array.isArray(b.depositos)) b.depositos = [];
+      });
       return;
     }
 
     const total = JI.STARTING_CAPITAL;
     const parts = JI.splitUnequal(total, BANK_DEFS.length, 5_000_000);
     state.banks = BANK_DEFS.map((def, i) => makeBank(def, parts[i]));
+
+    // Seed each bank with an opening-deposit history record.
+    state.banks.forEach(b => {
+      recordHistory(state, b, 'IN', b.balance, 'Modal awal Juragan');
+    });
   }
 
   /* ---------- Lookup ---------- */
@@ -145,7 +136,88 @@
     bank.debitTier = debitTierFor(bank.balance);
   }
 
-  /* ---------- Operation: Transfer between own bank accounts ---------- */
+  /* =========================================================================
+     CASH-FLOW AUDIT (Mutasi Rekening)
+     ========================================================================= */
+  function recordHistory(state, bank, type, amount, description) {
+    if (!bank) return;
+    if (!Array.isArray(bank.history)) bank.history = [];
+    bank.history.push({
+      date: JI.formatCalendar(state.totalDays),
+      day: state.totalDays,
+      type: type,                     // 'IN' or 'OUT'
+      amount: Math.max(0, Math.round(amount || 0)),
+      description: description || '',
+    });
+    // Cap history to last 500 entries per bank for memory hygiene.
+    if (bank.history.length > 500) bank.history.splice(0, bank.history.length - 500);
+  }
+
+  /**
+   * Add cash to a specific bank, with audit trail.
+   * Returns { ok, bank, balance } or { ok:false, error }.
+   */
+  function bankCredit(state, bankId, amount, description) {
+    const bank = getBank(state, bankId);
+    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
+    const amt = Math.max(0, Math.round(Number(amount) || 0));
+    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
+    bank.balance += amt;
+    refreshDerived(bank);
+    recordHistory(state, bank, 'IN', amt, description || 'Penerimaan');
+    return { ok: true, bank, balance: bank.balance };
+  }
+
+  /**
+   * Deduct cash from a specific bank, with audit trail. Refuses if insufficient.
+   */
+  function bankDebit(state, bankId, amount, description) {
+    const bank = getBank(state, bankId);
+    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
+    const amt = Math.max(0, Math.round(Number(amount) || 0));
+    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
+    if (bank.balance < amt) {
+      return { ok: false, error: `Saldo ${bank.shortName} tidak mencukupi.` };
+    }
+    bank.balance -= amt;
+    refreshDerived(bank);
+    recordHistory(state, bank, 'OUT', amt, description || 'Pengeluaran');
+    return { ok: true, bank, balance: bank.balance };
+  }
+
+  /**
+   * Try to debit, but if a bank can't cover, fall back to other banks (richest first).
+   * Returns { ok, drawnFrom: [{bankId, amount}], shortfall }.
+   */
+  function debitAcrossBanks(state, amount, description) {
+    let remaining = Math.max(0, Math.round(amount || 0));
+    const drawn = [];
+    if (remaining <= 0) return { ok: true, drawnFrom: drawn, shortfall: 0 };
+
+    const banks = [...(state.banks || [])].sort((a, b) => b.balance - a.balance);
+    for (const b of banks) {
+      if (remaining <= 0) break;
+      if (b.balance <= 0) continue;
+      const take = Math.min(b.balance, remaining);
+      bankDebit(state, b.id, take, description);
+      drawn.push({ bankId: b.id, amount: take });
+      remaining -= take;
+    }
+    return { ok: remaining === 0, drawnFrom: drawn, shortfall: remaining };
+  }
+
+  /**
+   * Pick a random bank id, optionally weighted by current balance.
+   */
+  function pickRandomBankId(state) {
+    const banks = state.banks || [];
+    if (banks.length === 0) return null;
+    return banks[JI.randomInt(0, banks.length - 1)].id;
+  }
+
+  /* =========================================================================
+     OPERATIONS
+     ========================================================================= */
   function transfer(state, fromId, toId, amount) {
     if (fromId === toId) {
       return { ok: false, error: 'Bank asal dan tujuan tidak boleh sama.' };
@@ -160,16 +232,15 @@
     if (from.balance < amt) {
       return { ok: false, error: `Saldo ${from.shortName} tidak mencukupi.` };
     }
-    from.balance -= amt;
-    to.balance   += amt;
-    refreshDerived(from);
-    refreshDerived(to);
+
+    bankDebit(state, fromId, amt, `Transfer ke ${to.shortName}`);
+    bankCredit(state, toId, amt, `Transfer dari ${from.shortName}`);
+
     JI.recomputeNetWorth(state);
     JI.awardXP(state, Math.min(50, Math.floor(amt / 1_000_000)));
     return { ok: true, amount: amt };
   }
 
-  /* ---------- Operation: Credit card application ---------- */
   function applyCreditCard(state, bankId) {
     const bank = getBank(state, bankId);
     if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
@@ -187,7 +258,6 @@
     return { ok: true, limit: offer.limit };
   }
 
-  /* ---------- Operation: Apply KTA loan ---------- */
   function applyLoan(state, bankId, principal) {
     const bank = getBank(state, bankId);
     if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
@@ -212,11 +282,37 @@
       daysRemaining: q.termDays,
       startedOnDay: state.totalDays,
     };
-    bank.balance += p; // disbursement
-    refreshDerived(bank);
+    bankCredit(state, bankId, p, 'Pencairan KTA');
     JI.recomputeNetWorth(state);
     JI.awardXP(state, 120);
     return { ok: true, quote: q };
+  }
+
+  /**
+   * Daily loan tick — called by engine. Returns array of events for the day.
+   */
+  function tickLoans(state) {
+    const events = [];
+    (state.banks || []).forEach(bank => {
+      if (!bank.loan || !bank.loan.isActive) return;
+      const due = bank.loan.dailyInstallment;
+      if (bank.balance >= due) {
+        bankDebit(state, bank.id, due, 'Cicilan KTA harian');
+        bank.loan.remaining = Math.max(0, bank.loan.remaining - due);
+        bank.loan.daysRemaining -= 1;
+        events.push({ type: 'loan_paid', bankId: bank.id, amount: due });
+        if (bank.loan.remaining <= 0 || bank.loan.daysRemaining <= 0) {
+          bank.loan.isActive = false;
+          bank.loan.remaining = 0;
+          bank.loan.daysRemaining = 0;
+          events.push({ type: 'loan_settled', bankId: bank.id });
+        }
+      } else {
+        // Cannot pay — mark as defaulted (penalty: tier hit + XP loss)
+        events.push({ type: 'loan_default', bankId: bank.id, amount: due });
+      }
+    });
+    return events;
   }
 
   /* ---------- Helpers used by UI / future phases ---------- */
@@ -241,6 +337,12 @@
     transfer,
     applyCreditCard,
     applyLoan,
+    tickLoans,
+    bankCredit,
+    bankDebit,
+    debitAcrossBanks,
+    pickRandomBankId,
+    recordHistory,
     totalBankBalance,
     activeLoanCount,
     LOAN_INTEREST_FLAT,
