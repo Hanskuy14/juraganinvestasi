@@ -9,7 +9,7 @@
 
   const STORAGE_KEY = 'juragan_investasi_state_v1';
   const STARTING_CAPITAL = 150_000_000; // Rp 150jt
-  const STATE_VERSION = 2;
+  const STATE_VERSION = 3;
   const DEFAULT_DAILY_OPS_COST = 500_000; // Rp 500rb / hari (placeholder)
 
   /* ---------- Company titles by level ---------- */
@@ -53,8 +53,12 @@
       portfolio: [],          // [{ticker, qty, avgPrice}]
 
       // ----- News -----
-      newsHistory: [],        // [{day, ticker, headline, sentiment, category}]
+      newsHistory: [],        // [{day, ticker, headline, sentiment, category, multiplier}]
       todaysNews: [],         // shortcut to today's headlines
+      // Phase 6: news generated TODAY queues effects here; effects are
+      // applied at the START of the NEXT calculateNextDayPrices() call.
+      // Shape: [{ ticker, multiplier, source: 'news'|'goreng' }]
+      pendingNewsEffects: [],
 
       // ----- Random events -----
       eventLog: [],           // [{day, id, title, type}]
@@ -73,6 +77,8 @@
         cars:          [],
         motorcycles:   [],
         officeCapacity: 0,
+        // Phase 6: Mega Infrastruktur ownership counts (qty per type)
+        infrastructure: { spbu: 0, garment: 0, hotel: 0, rsi: 0, tol: 0 },
       },
 
       // Company progression
@@ -88,7 +94,8 @@
   }
 
   /* ---------- Migrations ----------
-     v1 -> v2: add Phase 5 fields without nuking the player's banks/level. */
+     v1 -> v2: add Phase 5 fields without nuking the player's banks/level.
+     v2 -> v3: add Phase 6 fields (delayed news, mega infrastructure). */
   function migrate(state) {
     if (!state) return defaultState();
     if (!state.version || state.version < 2) {
@@ -108,9 +115,31 @@
         annualTax:          state.annualTax || 0,
         dailyOpsCost:       state.dailyOpsCost || DEFAULT_DAILY_OPS_COST,
         opsCostMultiplierToday: 1,
-        version: STATE_VERSION,
+        version: 2,
       };
-      return merged;
+      state = merged;
+    }
+    if (state.version < 3) {
+      // Phase 6 fields
+      state.pendingNewsEffects = Array.isArray(state.pendingNewsEffects)
+        ? state.pendingNewsEffects : [];
+      state.physicalAssets = state.physicalAssets || {
+        properties: [], cars: [], motorcycles: [], officeCapacity: 0,
+      };
+      if (!state.physicalAssets.infrastructure ||
+          typeof state.physicalAssets.infrastructure !== 'object') {
+        state.physicalAssets.infrastructure = {
+          spbu: 0, garment: 0, hotel: 0, rsi: 0, tol: 0,
+        };
+      } else {
+        // Ensure all 5 keys exist.
+        ['spbu','garment','hotel','rsi','tol'].forEach(k => {
+          if (state.physicalAssets.infrastructure[k] == null) {
+            state.physicalAssets.infrastructure[k] = 0;
+          }
+        });
+      }
+      state.version = 3;
     }
     return state;
   }
@@ -140,7 +169,8 @@
   }
 
   /* ---------- Net worth recompute ----------
-     Banks balance + portfolio market value − active loan + CC debt.
+     Banks balance + portfolio market value + Mega Infrastructure book value
+     − active loan + CC debt.
   */
   function recomputeNetWorth(state) {
     const bankSum = (state.banks || []).reduce((a, b) => a + (b.balance || 0), 0);
@@ -156,7 +186,10 @@
       const px = (state.assetPrices || {})[p.ticker] || 0;
       return a + px * (p.qty || 0);
     }, 0);
-    state.totalNetWorth = bankSum + portfolioValue - loanDebt - ccDebt;
+    const infraValue = (typeof JI.totalInfrastructureValue === 'function')
+      ? JI.totalInfrastructureValue(state)
+      : 0;
+    state.totalNetWorth = bankSum + portfolioValue + infraValue - loanDebt - ccDebt;
     return state.totalNetWorth;
   }
 

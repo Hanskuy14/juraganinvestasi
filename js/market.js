@@ -17,24 +17,26 @@
 
   const JI = global.JI || (global.JI = {});
 
-  /* ---------- Master asset list (exactly 45) ---------- */
+  /* ---------- Master asset list (exactly 45) ----------
+     Phase 6: 15 Local Stocks now carry an `outstandingShares` cap (5M..20M).
+     Used to enforce supply on buy + drive Bandar (>=50%) mechanic. */
   const ASSETS = [
     /* ============== STOCKS (15) ============== */
-    { ticker: 'BBCA', name: 'Bank Central Asia',          category: 'stock', sector: 'Bank',     initialPrice: 9_500,    volatility: 0.018 },
-    { ticker: 'BMRI', name: 'Bank Mandiri',               category: 'stock', sector: 'Bank',     initialPrice: 6_100,    volatility: 0.020 },
-    { ticker: 'BBRI', name: 'Bank Rakyat Indonesia',      category: 'stock', sector: 'Bank',     initialPrice: 4_800,    volatility: 0.020 },
-    { ticker: 'BBNI', name: 'Bank Negara Indonesia',      category: 'stock', sector: 'Bank',     initialPrice: 5_200,    volatility: 0.022 },
-    { ticker: 'TLKM', name: 'Telkom Indonesia',           category: 'stock', sector: 'Telco',    initialPrice: 3_400,    volatility: 0.019 },
-    { ticker: 'ASII', name: 'Astra International',        category: 'stock', sector: 'Auto',     initialPrice: 5_500,    volatility: 0.022 },
-    { ticker: 'UNVR', name: 'Unilever Indonesia',         category: 'stock', sector: 'Consumer', initialPrice: 2_800,    volatility: 0.021 },
-    { ticker: 'ICBP', name: 'Indofood CBP Sukses Makmur', category: 'stock', sector: 'Consumer', initialPrice: 11_500,   volatility: 0.018 },
-    { ticker: 'INDF', name: 'Indofood Sukses Makmur',     category: 'stock', sector: 'Consumer', initialPrice: 6_400,    volatility: 0.018 },
-    { ticker: 'GGRM', name: 'Gudang Garam',               category: 'stock', sector: 'Consumer', initialPrice: 22_000,   volatility: 0.024 },
-    { ticker: 'HMSP', name: 'HM Sampoerna',               category: 'stock', sector: 'Consumer', initialPrice: 1_200,    volatility: 0.025 },
-    { ticker: 'ANTM', name: 'Aneka Tambang',              category: 'stock', sector: 'Mining',   initialPrice: 1_650,    volatility: 0.030 },
-    { ticker: 'PTBA', name: 'Bukit Asam',                 category: 'stock', sector: 'Mining',   initialPrice: 2_750,    volatility: 0.028 },
-    { ticker: 'ADRO', name: 'Adaro Energy',               category: 'stock', sector: 'Energy',   initialPrice: 2_400,    volatility: 0.030 },
-    { ticker: 'KLBF', name: 'Kalbe Farma',                category: 'stock', sector: 'Pharma',   initialPrice: 1_500,    volatility: 0.020 },
+    { ticker: 'BBCA', name: 'Bank Central Asia',          category: 'stock', sector: 'Bank',     initialPrice: 9_500,    volatility: 0.018, outstandingShares: 12_000_000 },
+    { ticker: 'BMRI', name: 'Bank Mandiri',               category: 'stock', sector: 'Bank',     initialPrice: 6_100,    volatility: 0.020, outstandingShares: 15_000_000 },
+    { ticker: 'BBRI', name: 'Bank Rakyat Indonesia',      category: 'stock', sector: 'Bank',     initialPrice: 4_800,    volatility: 0.020, outstandingShares: 18_000_000 },
+    { ticker: 'BBNI', name: 'Bank Negara Indonesia',      category: 'stock', sector: 'Bank',     initialPrice: 5_200,    volatility: 0.022, outstandingShares: 14_000_000 },
+    { ticker: 'TLKM', name: 'Telkom Indonesia',           category: 'stock', sector: 'Telco',    initialPrice: 3_400,    volatility: 0.019, outstandingShares: 20_000_000 },
+    { ticker: 'ASII', name: 'Astra International',        category: 'stock', sector: 'Auto',     initialPrice: 5_500,    volatility: 0.022, outstandingShares: 10_000_000 },
+    { ticker: 'UNVR', name: 'Unilever Indonesia',         category: 'stock', sector: 'Consumer', initialPrice: 2_800,    volatility: 0.021, outstandingShares: 16_000_000 },
+    { ticker: 'ICBP', name: 'Indofood CBP Sukses Makmur', category: 'stock', sector: 'Consumer', initialPrice: 11_500,   volatility: 0.018, outstandingShares:  8_000_000 },
+    { ticker: 'INDF', name: 'Indofood Sukses Makmur',     category: 'stock', sector: 'Consumer', initialPrice: 6_400,    volatility: 0.018, outstandingShares: 11_000_000 },
+    { ticker: 'GGRM', name: 'Gudang Garam',               category: 'stock', sector: 'Consumer', initialPrice: 22_000,   volatility: 0.024, outstandingShares:  5_000_000 },
+    { ticker: 'HMSP', name: 'HM Sampoerna',               category: 'stock', sector: 'Consumer', initialPrice: 1_200,    volatility: 0.025, outstandingShares: 17_000_000 },
+    { ticker: 'ANTM', name: 'Aneka Tambang',              category: 'stock', sector: 'Mining',   initialPrice: 1_650,    volatility: 0.030, outstandingShares: 13_000_000 },
+    { ticker: 'PTBA', name: 'Bukit Asam',                 category: 'stock', sector: 'Mining',   initialPrice: 2_750,    volatility: 0.028, outstandingShares:  9_000_000 },
+    { ticker: 'ADRO', name: 'Adaro Energy',               category: 'stock', sector: 'Energy',   initialPrice: 2_400,    volatility: 0.030, outstandingShares: 12_000_000 },
+    { ticker: 'KLBF', name: 'Kalbe Farma',                category: 'stock', sector: 'Pharma',   initialPrice: 1_500,    volatility: 0.020, outstandingShares: 19_000_000 },
 
     /* ============== CRYPTO (15) ============== */
     { ticker: 'BTC',   name: 'Bitcoin',       category: 'crypto', initialPrice: 1_050_000_000, volatility: 0.045 },
@@ -135,40 +137,50 @@
   }
 
   /* ---------- Daily price evolution ----------
-     Phase 5: each asset's new price = current * (1 + drift + newsImpact)
-     `todaysNews` is an array of news items: {ticker, sentiment, ...}
-     The same news item drives the SAME asset's instant spike/drop. */
-  function calculateNextDayPrices(state, todaysNews) {
+     Phase 6: DELAYED news effect.
+     1. Read state.pendingNewsEffects (queued by yesterday's generateDailyNews
+        and by Bandar "Goreng Saham" actions). Apply each effect's
+        multiplier directly to the targeted asset.
+     2. Clear state.pendingNewsEffects.
+     3. For every UNAFFECTED asset, run a normal Random Walk drift.
+     4. Push every asset's resulting price onto its priceHistory tail.
+     The caller (loop.js) generates TODAY's news AFTER this step, so today's
+     news will be applied on the NEXT day's price calc.
+  */
+  function calculateNextDayPrices(state) {
     if (!state.assetPrices) seedMarket(state);
 
-    // Build a quick lookup: ticker -> sentiment of today's news
-    const newsByTicker = {};
-    (todaysNews || []).forEach(n => {
-      if (!n || !n.ticker) return;
-      newsByTicker[n.ticker] = n.sentiment;
+    // 1. Apply queued effects from yesterday's news + any Goreng Saham.
+    const affected = new Set();
+    const pending = Array.isArray(state.pendingNewsEffects)
+      ? state.pendingNewsEffects : [];
+    pending.forEach(eff => {
+      if (!eff || !eff.ticker) return;
+      const cur = state.assetPrices[eff.ticker];
+      if (cur == null) return;
+      const pct = JI.clamp(Number(eff.multiplier) || 0, -0.95, 5);
+      const next = Math.max(1, Math.round(cur * (1 + pct)));
+      state.assetPrices[eff.ticker] = next;
+      affected.add(eff.ticker);
     });
+    state.pendingNewsEffects = [];
 
+    // 2. Random Walk drift for unaffected assets only.
     ASSETS.forEach(asset => {
       const cur = state.assetPrices[asset.ticker];
       if (cur == null) return;
 
-      // baseline drift: gaussian-ish noise centered on 0
-      const drift = (Math.random() - 0.5) * asset.volatility * 2;
+      if (!affected.has(asset.ticker)) {
+        const drift = (Math.random() - 0.5) * asset.volatility * 2;
+        const pct = JI.clamp(drift, -0.6, 0.8);
+        const next = Math.max(1, Math.round(cur * (1 + pct)));
+        state.assetPrices[asset.ticker] = next;
+      }
 
-      // news impact (if asset is mentioned today)
-      const sentiment = newsByTicker[asset.ticker];
-      const impact = sentiment ? newsImpactPct(asset, sentiment) : 0;
-
-      let pct = drift + impact;
-
-      // floor on catastrophic noise so prices don't vanish
-      pct = JI.clamp(pct, -0.6, 0.8);
-
-      const next = Math.max(1, Math.round(cur * (1 + pct)));
-      state.assetPrices[asset.ticker] = next;
-
+      // 3. Push final price into history.
+      const finalPrice = state.assetPrices[asset.ticker];
       const hist = state.priceHistory[asset.ticker] || [];
-      hist.push(next);
+      hist.push(finalPrice);
       if (hist.length > 60) hist.shift();
       state.priceHistory[asset.ticker] = hist;
     });

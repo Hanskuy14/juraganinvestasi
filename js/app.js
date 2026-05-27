@@ -50,6 +50,15 @@
     JI.initBanks(JI.gameState);
     // Phase 5: ensure the 45 hardcoded asset prices are seeded.
     if (typeof JI.seedMarket === 'function') JI.seedMarket(JI.gameState);
+    // Phase 6: ensure Mega Infrastructure state shape exists.
+    if (typeof JI.ensureInfraState === 'function') JI.ensureInfraState(JI.gameState);
+
+    /* Phase 6: seed Day 1 news so the player has headlines to read on
+       Day 1, while their price effects sit in pendingNewsEffects and
+       only land when the player clicks "Next Day" (= Day 2). This
+       enforces the delayed-effect rule even on a brand new game. */
+    seedInitialNewsIfNeeded(JI.gameState);
+
     JI.recomputeNetWorth(JI.gameState);
     JI.saveState(JI.gameState);
 
@@ -62,6 +71,30 @@
 
     // 4. Periodic header refresh (clock + net worth display) every 30s.
     setInterval(JI.renderHeader, 30_000);
+  }
+
+  function seedInitialNewsIfNeeded(state) {
+    if (!state) return;
+    const noTodaysNews   = !state.todaysNews || state.todaysNews.length === 0;
+    const noPendingFx    = !state.pendingNewsEffects || state.pendingNewsEffects.length === 0;
+    const noHistoryToday = !(state.newsHistory || []).some(n => n.day === state.totalDays);
+    if (!(noTodaysNews && noPendingFx && noHistoryToday)) return;
+    if (typeof JI.generateDailyNews !== 'function') return;
+
+    const news = JI.generateDailyNews(state) || [];
+    state.todaysNews = news.slice();
+    state.newsHistory = state.newsHistory || [];
+    state.newsHistory.unshift(...news);
+    if (state.newsHistory.length > 200) state.newsHistory.length = 200;
+
+    state.pendingNewsEffects = state.pendingNewsEffects || [];
+    news.forEach(n => {
+      state.pendingNewsEffects.push({
+        ticker: n.ticker,
+        multiplier: n.multiplier,
+        source: 'news',
+      });
+    });
   }
 
   document.addEventListener('DOMContentLoaded', () => {

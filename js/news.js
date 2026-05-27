@@ -139,8 +139,13 @@
      generateDailyNews(state)
      - Picks 2..4 distinct assets across all 45.
      - Rolls a sentiment per asset (50/50 by default).
-     - Returns array of { day, ticker, name, category, sentiment, headline, body }
-     - Does NOT mutate state.priceMap; market.js applies impacts.
+     - Phase 6: each news item carries its own pre-rolled `multiplier`
+       (e.g. +0.12 means +12% next day). The caller is responsible for
+       pushing these into state.pendingNewsEffects so the impact lands on
+       the NEXT calculateNextDayPrices() call (delayed effect).
+     - Returns array of { day, ticker, name, category, sentiment,
+                          multiplier, headline, body }
+     - Does NOT mutate state.
      ========================================================================= */
   function generateDailyNews(state) {
     const assets = JI.ASSETS || [];
@@ -151,12 +156,16 @@
 
     return shuffled.map(asset => {
       const sentiment = Math.random() < 0.5 ? 'bullish' : 'bearish';
+      const multiplier = (typeof JI.newsImpactPct === 'function')
+        ? JI.newsImpactPct(asset, sentiment)
+        : (sentiment === 'bullish' ? 0.10 : -0.10);
       return {
         day: state.totalDays,
         ticker: asset.ticker,
         name: asset.name,
         category: asset.category,
         sentiment,
+        multiplier,
         headline: pickHeadline(asset, sentiment),
         body: buildBody(asset, sentiment),
       };

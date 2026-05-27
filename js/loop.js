@@ -1,25 +1,34 @@
 /* =========================================================================
    loop.js — The "Next Day" orchestrator.
 
-   Phase 5 RULES enforced here:
-     - NO XP is added to companyXP from this loop.
-     - 8% chance to fire a random event (events.js handles selection).
-     - Asset-specific news is generated FIRST, then drives price impacts.
-     - opsCostMultiplierToday is reset at the START of every day, then can
-       be modified by an event (e.g. Indihome Mati x5) before ops cost is
-       deducted at the END of the day.
+   Phase 6 RULES enforced here:
+     - DELAYED NEWS EFFECT: the news the player saw YESTERDAY (already
+       queued in state.pendingNewsEffects) is what moves prices today.
+     - calculateNextDayPrices() consumes pendingNewsEffects FIRST, then
+       random-walks unaffected assets.
+     - generateDailyNews() runs LAST — those headlines drive TOMORROW's
+       prices.
+     - Mega Infrastructure passive income is auto-credited to the richest
+       bank every Next Day.
 
    Order of operations in nextDay():
      1. Increment totalDays.
      2. Reset opsCostMultiplierToday = 1.
-     3. Generate today's asset news (2..4 headlines).
-     4. calculateNextDayPrices(state, todaysNews)  → instant spikes/drops.
-     5. Roll random event (8%) — may stack additional price moves, deduct
-        cash, set ops cost multiplier, award XP (Podcast), or clear taxes.
-     6. Loan installments: deduct daily installment per active loan.
-     7. Daily operational cost = dailyOpsCost * opsCostMultiplierToday,
+     3. calculateNextDayPrices(state)
+          a. apply each entry in state.pendingNewsEffects to its asset
+          b. clear pendingNewsEffects
+          c. random-walk drift for every asset NOT touched in (a)
+     4. Roll random event (8%) — may stack price moves, deduct cash, set
+        ops cost multiplier, award XP (Podcast), or clear taxes.
+     5. Loan installments per active loan.
+     6. Daily operational cost = dailyOpsCost * opsCostMultiplierToday,
         deducted from richest bank.
-     8. recomputeNetWorth + saveState.
+     7. Mega Infrastructure daily income credited to richest bank.
+     8. generateDailyNews(state) for the NEW day, push each item into
+        state.pendingNewsEffects (these will land tomorrow).
+     9. recomputeNetWorth + saveState.
+
+   No XP from this loop (Phase 5 rule retained).
    ========================================================================= */
 
 (function (global) {
@@ -83,34 +92,51 @@
     /* 2. Reset per-day modifiers. */
     state.opsCostMultiplierToday = 1;
 
-    /* 3. Generate today's asset news. */
-    const todaysNews = (typeof JI.generateDailyNews === 'function')
-      ? JI.generateDailyNews(state)
-      : [];
-    state.todaysNews = todaysNews.slice();
-    state.newsHistory = state.newsHistory || [];
-    state.newsHistory.unshift(...todaysNews);
-    if (state.newsHistory.length > 200) state.newsHistory.length = 200;
-
-    /* 4. Apply baseline drift + per-asset news impact. */
+    /* 3. Apply YESTERDAY's queued news effects, then random-walk the rest. */
     if (typeof JI.calculateNextDayPrices === 'function') {
-      JI.calculateNextDayPrices(state, todaysNews);
+      JI.calculateNextDayPrices(state);
     }
 
-    /* 5. Random event roll (8%). May modify prices / cash / XP / taxes /
+    /* 4. Random event roll (8%). May modify prices / cash / XP / taxes /
           opsCostMultiplierToday. */
     let event = null;
     if (typeof JI.rollRandomEvent === 'function') {
       event = JI.rollRandomEvent(state);
     }
 
-    /* 6. Loan installments. */
+    /* 5. Loan installments. */
     const loanReport = processLoanInstallments(state);
 
-    /* 7. Daily operational cost (with optional event multiplier). */
+    /* 6. Daily operational cost (with optional event multiplier). */
     const opsReport = chargeOperationalCost(state);
 
-    /* 8. Finalize. (Phase 5: explicitly NO XP awarded here.) */
+    /* 7. Mega Infrastructure passive income. */
+    let infraReport = { total: 0, bankName: '—', breakdown: [] };
+    if (typeof JI.injectInfrastructureIncome === 'function') {
+      infraReport = JI.injectInfrastructureIncome(state);
+    }
+
+    /* 8. Generate TODAY's news (will affect TOMORROW's prices via
+          pendingNewsEffects). */
+    let todaysNews = [];
+    if (typeof JI.generateDailyNews === 'function') {
+      todaysNews = JI.generateDailyNews(state) || [];
+    }
+    state.todaysNews = todaysNews.slice();
+    state.newsHistory = state.newsHistory || [];
+    state.newsHistory.unshift(...todaysNews);
+    if (state.newsHistory.length > 200) state.newsHistory.length = 200;
+
+    state.pendingNewsEffects = state.pendingNewsEffects || [];
+    todaysNews.forEach(n => {
+      state.pendingNewsEffects.push({
+        ticker: n.ticker,
+        multiplier: n.multiplier,
+        source: 'news',
+      });
+    });
+
+    /* 9. Finalize. (Phase 5 rule retained: no XP from the loop.) */
     JI.recomputeNetWorth(state);
     JI.saveState(state);
 
@@ -120,6 +146,7 @@
       event,            // null or populated event object
       loanReport,
       opsReport,
+      infraReport,
     };
   }
 

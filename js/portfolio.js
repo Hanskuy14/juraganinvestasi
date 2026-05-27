@@ -22,6 +22,45 @@
     return (state.portfolio || []).find(p => p.ticker === ticker) || null;
   }
 
+  function ownedUnits(state, ticker) {
+    const pos = findPosition(state, ticker);
+    return pos ? pos.qty : 0;
+  }
+
+  /* Phase 6: Bandar / Hostile Takeover helpers (Local Stocks ONLY).
+     - availableSupply = outstandingShares - ownedUnits
+     - ownershipPct    = ownedUnits / outstandingShares  (0..1)
+     - isBandar        = ownershipPct >= 0.5
+  */
+  function availableSupply(state, ticker) {
+    const asset = JI.getAsset(ticker);
+    if (!asset || asset.category !== 'stock' || !asset.outstandingShares) {
+      return Infinity;
+    }
+    return Math.max(0, asset.outstandingShares - ownedUnits(state, ticker));
+  }
+
+  function ownershipPct(state, ticker) {
+    const asset = JI.getAsset(ticker);
+    if (!asset || !asset.outstandingShares) return 0;
+    return ownedUnits(state, ticker) / asset.outstandingShares;
+  }
+
+  function isBandar(state, ticker) {
+    return ownershipPct(state, ticker) >= 0.5;
+  }
+
+  function ownershipLabel(state, ticker) {
+    const asset = JI.getAsset(ticker);
+    if (!asset || asset.category !== 'stock' || !asset.outstandingShares) {
+      return null;
+    }
+    const pct = ownershipPct(state, ticker);
+    return isBandar(state, ticker)
+      ? 'Pemegang Saham Pengendali (Bandar)'
+      : pct > 0 ? 'Pemegang Saham Minoritas' : null;
+  }
+
   /* Pick the bank with the highest balance for crediting / debiting cash. */
   function richestBank(state) {
     if (!state.banks || state.banks.length === 0) return null;
@@ -54,6 +93,18 @@
 
     const q = Math.max(0, Math.floor(Number(qty) || 0));
     if (q <= 0) return { ok: false, error: 'Jumlah unit harus lebih dari 0.' };
+
+    /* Phase 6: enforce circulating supply for the 15 Local Stocks. */
+    if (asset.category === 'stock' && asset.outstandingShares) {
+      const avail = availableSupply(state, ticker);
+      if (q > avail) {
+        const sup = asset.outstandingShares.toLocaleString('id-ID');
+        return {
+          ok: false,
+          error: `Suplai beredar habis! Hanya ${avail.toLocaleString('id-ID')} dari ${sup} lembar yang tersisa untuk dibeli.`,
+        };
+      }
+    }
 
     const price = JI.getCurrentPrice(state, ticker);
     if (!price || price <= 0) {
@@ -184,6 +235,79 @@
     }, 0);
   }
 
+  /* ============================================================
+     Phase 6: "Goreng Saham" — Bandar Perk (>=50% ownership)
+     Cost: Rp 5.000.000.000 (5 Miliar) deducted from richest bank.
+     Effect: queues a +40% guaranteed price spike for the targeted
+             stock by pushing into state.pendingNewsEffects (applied
+             on the NEXT calculateNextDayPrices call).
+     ============================================================ */
+  const GORENG_COST = 5_000_000_000;
+  const GORENG_MULTIPLIER = 0.40;
+
+  function gorengSaham(state, ticker) {
+    const asset = JI.getAsset(ticker);
+    if (!asset || asset.category !== 'stock') {
+      return { ok: false, error: 'Hanya saham IDX yang bisa di-goreng.' };
+    }
+    if (!isBandar(state, ticker)) {
+      return {
+        ok: false,
+        error: 'Anda harus memegang minimal 50% (Bandar) untuk goreng saham ini.',
+      };
+    }
+
+    // Prevent stacking multiple goreng on the same ticker for the same day.
+    state.pendingNewsEffects = state.pendingNewsEffects || [];
+    if (state.pendingNewsEffects.some(e => e.ticker === ticker && e.source === 'goreng')) {
+      return { ok: false, error: 'Saham ini sudah Anda goreng untuk besok. Tunggu efeknya.' };
+    }
+
+    const bank = richestBank(state);
+    if (!bank || bank.balance < GORENG_COST) {
+      return {
+        ok: false,
+        error: `Butuh ${JI.formatIDR(GORENG_COST)} cash di rekening terkaya untuk operasi goreng.`,
+      };
+    }
+
+    bank.balance -= GORENG_COST;
+    state.pendingNewsEffects.push({
+      ticker,
+      multiplier: GORENG_MULTIPLIER,
+      source: 'goreng',
+    });
+
+    // Surface a "leaked" news headline today so the player can SEE the
+    // Bandar move in their News feed (price impact still lands tomorrow).
+    const news = {
+      day: state.totalDays,
+      ticker,
+      name: asset.name,
+      category: 'stock',
+      sentiment: 'bullish',
+      multiplier: GORENG_MULTIPLIER,
+      headline: `[GORENG] Saham ${asset.name} Diborong Pihak Misterius Jelang Penutupan!`,
+      body: `Bursa Saham · ${ticker} — Bandar saham bermain. Volume meledak, harga diperkirakan melonjak +40% besok.`,
+      source: 'goreng',
+    };
+    state.todaysNews = state.todaysNews || [];
+    state.todaysNews.push(news);
+    state.newsHistory = state.newsHistory || [];
+    state.newsHistory.unshift(news);
+    if (state.newsHistory.length > 200) state.newsHistory.length = 200;
+
+    if (typeof JI.recomputeNetWorth === 'function') JI.recomputeNetWorth(state);
+
+    return {
+      ok: true,
+      ticker,
+      cost: GORENG_COST,
+      multiplier: GORENG_MULTIPLIER,
+      bankName: bank.shortName || bank.name,
+    };
+  }
+
   /* ---------- Expose ---------- */
   Object.assign(JI, {
     buyAsset,
@@ -191,5 +315,14 @@
     findPosition,
     positionSnapshot,
     portfolioMarketValue,
+    // Phase 6
+    ownedUnits,
+    availableSupply,
+    ownershipPct,
+    isBandar,
+    ownershipLabel,
+    gorengSaham,
+    GORENG_COST,
+    GORENG_MULTIPLIER,
   });
 })(window);
