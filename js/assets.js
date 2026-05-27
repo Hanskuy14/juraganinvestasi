@@ -252,6 +252,41 @@
     return sum(phys.properties) + sum(phys.cars) + sum(phys.motorcycles);
   }
 
+  /* =========================================================================
+     Asset revaluation (Phase 3) — called once per month change.
+       Vehicles (cars + motorcycles): -2%
+       Properties: +1%
+     Returns summary { vehiclesDepreciated, propertiesAppreciated,
+                       vehicleDelta, propertyDelta }.
+     ========================================================================= */
+  const VEHICLE_DEPRECIATION = 0.02;
+  const PROPERTY_APPRECIATION = 0.01;
+
+  function revalueAssets(state) {
+    const phys = state.physicalAssets || {};
+    const summary = { vehiclesDepreciated: 0, propertiesAppreciated: 0,
+                      vehicleDelta: 0, propertyDelta: 0 };
+    const apply = (arr, factor, kind) => {
+      (arr || []).forEach(item => {
+        const before = item.value || 0;
+        const after  = Math.max(1, Math.round(before * factor));
+        const delta  = after - before;
+        item.value = after;
+        if (kind === 'vehicle') {
+          summary.vehiclesDepreciated += 1;
+          summary.vehicleDelta += delta;
+        } else {
+          summary.propertiesAppreciated += 1;
+          summary.propertyDelta += delta;
+        }
+      });
+    };
+    apply(phys.cars,        1 - VEHICLE_DEPRECIATION,  'vehicle');
+    apply(phys.motorcycles, 1 - VEHICLE_DEPRECIATION,  'vehicle');
+    apply(phys.properties,  1 + PROPERTY_APPRECIATION, 'property');
+    return summary;
+  }
+
   /* ---------- Expose ---------- */
   Object.assign(JI, {
     PROPERTIES,
@@ -267,5 +302,9 @@
     buyPhysicalAsset,
     ownedCount,
     totalPhysicalValue,
+    // Phase 3
+    revalueAssets,
+    VEHICLE_DEPRECIATION,
+    PROPERTY_APPRECIATION,
   });
 })(window);

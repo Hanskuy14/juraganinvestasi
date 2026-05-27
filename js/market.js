@@ -155,12 +155,12 @@
      newPrice = oldPrice * (1 + drift + uniform(-vol, +vol)) * newsMultiplier
      Then clamped to ±maxSwing of the category.
      ========================================================================= */
-  function _stepPrice(oldPrice, def, categoryMeta, newsImpact) {
+  function _stepPrice(oldPrice, def, categoryMeta, newsImpact, analystBonus = 0) {
     const noise = (Math.random() * 2 - 1) * def.vol; // baseline volatility
     // News pushes change toward the category's hard swing limit.
     const newsBoost = newsImpact * (categoryMeta.maxSwing - def.vol * 0.5);
 
-    let change = categoryMeta.drift + noise + newsBoost;
+    let change = categoryMeta.drift + analystBonus + noise + newsBoost;
     if (change >  categoryMeta.maxSwing) change =  categoryMeta.maxSwing;
     if (change < -categoryMeta.maxSwing) change = -categoryMeta.maxSwing;
 
@@ -173,7 +173,6 @@
       categoryMeta.key === 'reksadana' ? 100 : 1;
     if (next < floor) next = floor;
 
-    // Round: stocks/reksadana to integer rupiah; crypto integer too (rupiah is whole).
     next = Math.round(next);
     return { next, change };
   }
@@ -182,21 +181,31 @@
    * calculateNextDayPrices(state, newsImpactByTicker)
    * Advances all 45 assets by one day using Random Walk with Drift.
    * `newsImpactByTicker` is a Map/object: ticker -> impact in [-1..+1].
+   * Veteran analyst (HRD tier 3) adds a +0.2% positive drift bonus.
    */
   function calculateNextDayPrices(state, newsImpactByTicker = {}) {
     if (!state.marketAssets) initMarket(state);
+
+    // Apply analyst veteran drift bonus (Phase 3 perk)
+    let analystBonus = 0;
+    if (JI.getActivePerks) {
+      const perks = JI.getActivePerks(state);
+      if (perks && perks.analyst && perks.analyst.tier === 3) {
+        analystBonus = 0.002; // +0.2% / day positive drift
+      }
+    }
 
     Object.values(CATEGORY).forEach(catMeta => {
       catMeta.assets.forEach(def => {
         const m = state.marketAssets[def.ticker];
         if (!m) return;
         const impact = clamp(
-          newsImpactByTicker[def.ticker] ||
-          newsImpactByTicker[`cat:${catMeta.key}`] ||
-          newsImpactByTicker['cat:all'] || 0,
+          (newsImpactByTicker[def.ticker] || 0) +
+          (newsImpactByTicker[`cat:${catMeta.key}`] || 0) +
+          (newsImpactByTicker['cat:all'] || 0),
           -1, 1
         );
-        const { next } = _stepPrice(m.price, def, catMeta, impact);
+        const { next } = _stepPrice(m.price, def, catMeta, impact, analystBonus);
 
         m.prevPrice = m.price;
         m.openPrice = m.price; // open of new day = close of previous
@@ -214,6 +223,60 @@
     });
   }
 
+  /* =========================================================================
+     Predict next-day market impacts based on today's news.
+     Used by the HRD Analis Keuangan perk (Junior=1, Senior=3, Veteran=5).
+     Returns predictions sorted by |totalImpact| descending.
+     ========================================================================= */
+  function predictMarketImpacts(state, count) {
+    const news = state.dailyNews || [];
+    if (!news.length) return [];
+    const impactMap = (JI.buildImpactMap ? JI.buildImpactMap(news) : {});
+
+    const predictions = [];
+    Object.values(CATEGORY).forEach(cat => {
+      cat.assets.forEach(def => {
+        const ticker = def.ticker;
+        const tickerImpact = impactMap[ticker] || 0;
+        const catImpact = impactMap[`cat:${cat.key}`] || 0;
+        const allImpact = impactMap['cat:all'] || 0;
+        const totalImpact = tickerImpact + catImpact + allImpact;
+        if (Math.abs(totalImpact) < 1e-6) return;
+
+        // Source headlines that targeted this asset/category/all.
+        const reasons = [];
+        const seen = new Set();
+        news.forEach(n => {
+          (n.targets || []).forEach(t => {
+            const matches =
+              t.scope === `asset:${ticker}` ||
+              t.scope === `cat:${cat.key}` ||
+              t.scope === 'cat:all';
+            if (matches && !seen.has(n.sourceId || n.headline)) {
+              seen.add(n.sourceId || n.headline);
+              reasons.push({ headline: n.headline, icon: n.icon });
+            }
+          });
+        });
+
+        predictions.push({
+          ticker,
+          name: def.name,
+          category: cat.key,
+          categoryLabel: cat.label,
+          totalImpact,
+          direction: totalImpact > 0 ? 'up' : 'down',
+          // Confidence: how much of the category's max swing this represents.
+          confidence: Math.min(1, Math.abs(totalImpact) * (cat.maxSwing / Math.max(cat.maxSwing, 0.01))),
+          reasons,
+        });
+      });
+    });
+
+    predictions.sort((a, b) => Math.abs(b.totalImpact) - Math.abs(a.totalImpact));
+    return predictions.slice(0, Math.max(0, count));
+  }
+
   function clamp(n, min, max) {
     return Math.max(min, Math.min(max, n));
   }
@@ -223,10 +286,87 @@
      payment: { method: 'bank'|'credit', bankId }
      ========================================================================= */
 
+  /* =========================================================================
+     Broker rates (Phase 3)
+     Default (no broker hired): 0.25% fee, 0% cashback
+     Junior  (Rp 4M):  0.15% fee
+     Senior  (Rp 15M): 0.05% fee
+     Bandar  (Rp 40M): 0.00% fee + 0.10% cashback
+     ========================================================================= */
+  const DEFAULT_BROKER_FEE = 0.0025;
+  const PPH_FINAL_RATE     = 0.001;  // 0.1% on profitable sales
+
+  function getBrokerRates(state) {
+    let rates = { feeRate: DEFAULT_BROKER_FEE, cashbackRate: 0, tier: 0 };
+    if (JI.getActivePerks) {
+      const perks = JI.getActivePerks(state);
+      if (perks && perks.broker) {
+        rates = {
+          feeRate: perks.broker.feeRate,
+          cashbackRate: perks.broker.cashbackRate || 0,
+          tier: perks.broker.tier,
+        };
+      }
+    }
+    return rates;
+  }
+
   function calcCost(ticker, qty) {
     const m = JI.gameState.marketAssets[ticker];
     if (!m) return 0;
     return Math.round(m.price * Number(qty || 0));
+  }
+
+  /**
+   * Detailed quote for a buy: gross + broker fee + cashback + total charge.
+   * Used by Buy modal preview.
+   */
+  function quoteBuy(state, ticker, qty) {
+    const m = state.marketAssets[ticker];
+    if (!m) return null;
+    const grossCost = Math.round(m.price * Math.max(0, qty));
+    const broker = getBrokerRates(state);
+    const fee = Math.round(grossCost * broker.feeRate);
+    const cashback = Math.round(grossCost * broker.cashbackRate);
+    return {
+      grossCost,
+      fee,
+      cashback,
+      totalCharge: grossCost + fee,
+      broker,
+    };
+  }
+
+  /**
+   * Detailed quote for a sell.
+   */
+  function quoteSell(state, ticker, qty) {
+    const holding = state.portfolio.find(h => h.ticker === ticker);
+    const m = state.marketAssets[ticker];
+    if (!m || !holding || qty <= 0) return null;
+    const q = Math.min(qty, holding.qty);
+    const grossProceeds = Math.round(m.price * q);
+    const costBasisShare = holding.qty > 0
+      ? Math.round((holding.totalCost / holding.qty) * q)
+      : 0;
+    const grossPnL = grossProceeds - costBasisShare;
+    const broker = getBrokerRates(state);
+    const fee = Math.round(grossProceeds * broker.feeRate);
+    const cashback = Math.round(grossProceeds * broker.cashbackRate);
+    const pphFinal = grossPnL > 0 ? Math.round(grossPnL * PPH_FINAL_RATE) : 0;
+    const netProceeds = grossProceeds - fee - pphFinal + cashback;
+    return {
+      qty: q,
+      grossProceeds,
+      costBasisShare,
+      grossPnL,
+      fee,
+      pphFinal,
+      cashback,
+      netProceeds,
+      netPnL: netProceeds - costBasisShare,
+      broker,
+    };
   }
 
   function buyAsset(state, ticker, qty, payment) {
@@ -236,14 +376,32 @@
     if (qty <= 0) return { ok: false, error: 'Jumlah harus lebih besar dari 0.' };
 
     const m = state.marketAssets[ticker];
-    const totalCost = Math.round(m.price * qty);
-    if (totalCost <= 0) return { ok: false, error: 'Nominal tidak valid.' };
+    const grossCost = Math.round(m.price * qty);
+    if (grossCost <= 0) return { ok: false, error: 'Nominal tidak valid.' };
 
-    // Charge payment
-    const charged = JI.charge(state, totalCost, payment);
+    const broker = getBrokerRates(state);
+    const fee = Math.round(grossCost * broker.feeRate);
+    const cashback = Math.round(grossCost * broker.cashbackRate);
+    const totalCharge = grossCost + fee;
+
+    // Charge total via universal payment helper
+    const charged = JI.charge(state, totalCharge, payment);
     if (!charged.ok) return { ok: false, error: charged.error };
 
-    // Update / add holding
+    // Deposit cashback to chosen bank (Bandar broker perk)
+    if (cashback > 0 && payment.bankId) {
+      JI.deposit(state, payment.bankId, cashback);
+    }
+
+    // Track lifetime stats
+    state.brokerStats = state.brokerStats || {
+      totalFeesPaid: 0, totalCashbackEarned: 0, totalRealizedPnL: 0,
+      profitableSells: 0, losingSells: 0,
+    };
+    if (fee > 0)      state.brokerStats.totalFeesPaid += fee;
+    if (cashback > 0) state.brokerStats.totalCashbackEarned += cashback;
+
+    // Update / add holding (cost basis = gross only, fees tracked separately)
     let holding = state.portfolio.find(h => h.ticker === ticker);
     if (!holding) {
       holding = {
@@ -257,21 +415,25 @@
       state.portfolio.push(holding);
     }
     const newQty = holding.qty + qty;
-    const newCostBasis = holding.totalCost + totalCost;
+    const newCostBasis = holding.totalCost + grossCost;
     holding.qty = newQty;
     holding.totalCost = newCostBasis;
     holding.avgPrice = Math.round(newCostBasis / newQty);
 
     JI.recomputeNetWorth(state);
-    JI.awardXP(state, Math.min(80, Math.floor(totalCost / 5_000_000)));
 
     return {
       ok: true,
       ticker,
       qty,
       price: m.price,
-      totalCost,
+      grossCost,
+      fee,
+      cashback,
+      totalCharge,
+      totalCost: grossCost,    // legacy field for backward compat with toasts
       payment: charged,
+      broker,
     };
   }
 
@@ -288,13 +450,25 @@
     const bank = JI.getBank(state, bankId);
     if (!bank) return { ok: false, error: 'Pilih rekening bank tujuan.' };
 
-    const proceeds = Math.round(m.price * qty);
+    const grossProceeds = Math.round(m.price * qty);
     const costBasisShare = Math.round((holding.totalCost / holding.qty) * qty);
-    const realizedPnL = proceeds - costBasisShare;
+    const grossPnL = grossProceeds - costBasisShare;
 
-    bank.balance += proceeds;
+    // Broker fees / cashback
+    const broker = getBrokerRates(state);
+    const fee = Math.round(grossProceeds * broker.feeRate);
+    const cashback = Math.round(grossProceeds * broker.cashbackRate);
+
+    // PPh Final 0.1% on profit only
+    const pphFinal = grossPnL > 0 ? Math.round(grossPnL * PPH_FINAL_RATE) : 0;
+
+    const netProceeds = grossProceeds - fee - pphFinal + cashback;
+
+    // Credit bank with net proceeds
+    bank.balance += netProceeds;
     JI.refreshBankDerived?.(bank);
 
+    // Update holding
     holding.qty -= qty;
     holding.totalCost -= costBasisShare;
     if (holding.qty <= 0) {
@@ -304,10 +478,49 @@
       holding.avgPrice = Math.round(holding.totalCost / holding.qty);
     }
 
-    JI.recomputeNetWorth(state);
-    JI.awardXP(state, Math.min(60, Math.floor(Math.abs(realizedPnL) / 2_000_000)));
+    // Lifetime stats
+    state.brokerStats = state.brokerStats || {
+      totalFeesPaid: 0, totalCashbackEarned: 0, totalRealizedPnL: 0,
+      profitableSells: 0, losingSells: 0,
+    };
+    if (fee > 0)      state.brokerStats.totalFeesPaid += fee;
+    if (cashback > 0) state.brokerStats.totalCashbackEarned += cashback;
+    state.brokerStats.totalRealizedPnL += grossPnL;
+    if (grossPnL > 0) state.brokerStats.profitableSells += 1;
+    else if (grossPnL < 0) state.brokerStats.losingSells += 1;
 
-    return { ok: true, proceeds, realizedPnL, ticker, qty };
+    // Tax stats
+    state.taxStats = state.taxStats || { totalPPhPaid: 0, totalAnnualPaid: 0, totalPenaltiesPaid: 0 };
+    if (pphFinal > 0) state.taxStats.totalPPhPaid += pphFinal;
+
+    // XP per Phase 3 spec: only on profit. 50 base + 1 per Rp 1M profit.
+    let xpAwarded = 0;
+    let levelEvent = null;
+    if (grossPnL > 0) {
+      xpAwarded = 50 + Math.floor(grossPnL / 1_000_000);
+      levelEvent = JI.awardXP(state, xpAwarded);
+    }
+
+    JI.recomputeNetWorth(state);
+
+    return {
+      ok: true,
+      ticker,
+      qty,
+      grossProceeds,
+      costBasisShare,
+      grossPnL,
+      fee,
+      cashback,
+      pphFinal,
+      netProceeds,
+      netPnL: netProceeds - costBasisShare,
+      proceeds: netProceeds, // legacy field for Phase 2 toast text
+      realizedPnL: grossPnL, // legacy field
+      xpAwarded,
+      levelEvent,
+      broker,
+    };
   }
 
   /* =========================================================================
@@ -334,9 +547,16 @@
     initMarket,
     calculateNextDayPrices,
     calcCost,
+    quoteBuy,
+    quoteSell,
     buyAsset,
     sellAsset,
     categoryLabel,
     formatQty,
+    // Phase 3 additions
+    predictMarketImpacts,
+    getBrokerRates,
+    DEFAULT_BROKER_FEE,
+    PPH_FINAL_RATE,
   });
 })(window);
