@@ -17,24 +17,28 @@
 
   const JI = global.JI || (global.JI = {});
 
-  /* ---------- Master asset list (exactly 45) ---------- */
+  /* ---------- Master asset list (exactly 45) ----------
+     Phase 6: stocks now carry `outstandingShares` (5M..20M) — the cap on
+     circulating supply. Used to enforce supply on buy and to drive Bandar
+     (>=50% ownership) "Goreng Saham" mechanic. Crypto + Reksadana are
+     uncapped (you're trading derivatives / NAB units, not equity slices). */
   const ASSETS = [
     /* ============== STOCKS (15) ============== */
-    { ticker: 'BBCA', name: 'Bank Central Asia',          category: 'stock', sector: 'Bank',     initialPrice: 9_500,    volatility: 0.018 },
-    { ticker: 'BMRI', name: 'Bank Mandiri',               category: 'stock', sector: 'Bank',     initialPrice: 6_100,    volatility: 0.020 },
-    { ticker: 'BBRI', name: 'Bank Rakyat Indonesia',      category: 'stock', sector: 'Bank',     initialPrice: 4_800,    volatility: 0.020 },
-    { ticker: 'BBNI', name: 'Bank Negara Indonesia',      category: 'stock', sector: 'Bank',     initialPrice: 5_200,    volatility: 0.022 },
-    { ticker: 'TLKM', name: 'Telkom Indonesia',           category: 'stock', sector: 'Telco',    initialPrice: 3_400,    volatility: 0.019 },
-    { ticker: 'ASII', name: 'Astra International',        category: 'stock', sector: 'Auto',     initialPrice: 5_500,    volatility: 0.022 },
-    { ticker: 'UNVR', name: 'Unilever Indonesia',         category: 'stock', sector: 'Consumer', initialPrice: 2_800,    volatility: 0.021 },
-    { ticker: 'ICBP', name: 'Indofood CBP Sukses Makmur', category: 'stock', sector: 'Consumer', initialPrice: 11_500,   volatility: 0.018 },
-    { ticker: 'INDF', name: 'Indofood Sukses Makmur',     category: 'stock', sector: 'Consumer', initialPrice: 6_400,    volatility: 0.018 },
-    { ticker: 'GGRM', name: 'Gudang Garam',               category: 'stock', sector: 'Consumer', initialPrice: 22_000,   volatility: 0.024 },
-    { ticker: 'HMSP', name: 'HM Sampoerna',               category: 'stock', sector: 'Consumer', initialPrice: 1_200,    volatility: 0.025 },
-    { ticker: 'ANTM', name: 'Aneka Tambang',              category: 'stock', sector: 'Mining',   initialPrice: 1_650,    volatility: 0.030 },
-    { ticker: 'PTBA', name: 'Bukit Asam',                 category: 'stock', sector: 'Mining',   initialPrice: 2_750,    volatility: 0.028 },
-    { ticker: 'ADRO', name: 'Adaro Energy',               category: 'stock', sector: 'Energy',   initialPrice: 2_400,    volatility: 0.030 },
-    { ticker: 'KLBF', name: 'Kalbe Farma',                category: 'stock', sector: 'Pharma',   initialPrice: 1_500,    volatility: 0.020 },
+    { ticker: 'BBCA', name: 'Bank Central Asia',          category: 'stock', sector: 'Bank',     initialPrice: 9_500,    volatility: 0.018, outstandingShares: 12_000_000 },
+    { ticker: 'BMRI', name: 'Bank Mandiri',               category: 'stock', sector: 'Bank',     initialPrice: 6_100,    volatility: 0.020, outstandingShares: 15_000_000 },
+    { ticker: 'BBRI', name: 'Bank Rakyat Indonesia',      category: 'stock', sector: 'Bank',     initialPrice: 4_800,    volatility: 0.020, outstandingShares: 18_000_000 },
+    { ticker: 'BBNI', name: 'Bank Negara Indonesia',      category: 'stock', sector: 'Bank',     initialPrice: 5_200,    volatility: 0.022, outstandingShares: 14_000_000 },
+    { ticker: 'TLKM', name: 'Telkom Indonesia',           category: 'stock', sector: 'Telco',    initialPrice: 3_400,    volatility: 0.019, outstandingShares: 19_000_000 },
+    { ticker: 'ASII', name: 'Astra International',        category: 'stock', sector: 'Auto',     initialPrice: 5_500,    volatility: 0.022, outstandingShares: 10_000_000 },
+    { ticker: 'UNVR', name: 'Unilever Indonesia',         category: 'stock', sector: 'Consumer', initialPrice: 2_800,    volatility: 0.021, outstandingShares: 16_000_000 },
+    { ticker: 'ICBP', name: 'Indofood CBP Sukses Makmur', category: 'stock', sector: 'Consumer', initialPrice: 11_500,   volatility: 0.018, outstandingShares:  8_000_000 },
+    { ticker: 'INDF', name: 'Indofood Sukses Makmur',     category: 'stock', sector: 'Consumer', initialPrice: 6_400,    volatility: 0.018, outstandingShares: 11_000_000 },
+    { ticker: 'GGRM', name: 'Gudang Garam',               category: 'stock', sector: 'Consumer', initialPrice: 22_000,   volatility: 0.024, outstandingShares:  6_000_000 },
+    { ticker: 'HMSP', name: 'HM Sampoerna',               category: 'stock', sector: 'Consumer', initialPrice: 1_200,    volatility: 0.025, outstandingShares: 20_000_000 },
+    { ticker: 'ANTM', name: 'Aneka Tambang',              category: 'stock', sector: 'Mining',   initialPrice: 1_650,    volatility: 0.030, outstandingShares: 13_000_000 },
+    { ticker: 'PTBA', name: 'Bukit Asam',                 category: 'stock', sector: 'Mining',   initialPrice: 2_750,    volatility: 0.028, outstandingShares:  9_000_000 },
+    { ticker: 'ADRO', name: 'Adaro Energy',               category: 'stock', sector: 'Energy',   initialPrice: 2_400,    volatility: 0.030, outstandingShares:  7_500_000 },
+    { ticker: 'KLBF', name: 'Kalbe Farma',                category: 'stock', sector: 'Pharma',   initialPrice: 1_500,    volatility: 0.020, outstandingShares:  5_000_000 },
 
     /* ============== CRYPTO (15) ============== */
     { ticker: 'BTC',   name: 'Bitcoin',       category: 'crypto', initialPrice: 1_050_000_000, volatility: 0.045 },
@@ -178,20 +182,58 @@
     return 0;
   }
 
+  /* =========================================================================
+     Phase 6 — Bandar / Ownership helpers (Local Stocks only).
+
+     Stocks have a fixed circulating supply (outstandingShares). The player's
+     ownership pct = ownedUnits / outstandingShares. When pct >= 0.5 the
+     player becomes the controlling shareholder ("Bandar") of that ticker
+     and unlocks the Goreng Saham flow in portfolio.js.
+     ========================================================================= */
+  function ownedUnits(state, ticker) {
+    const pos = (state.portfolio || []).find(p => p.ticker === ticker);
+    return pos ? (pos.qty || 0) : 0;
+  }
+
+  function availableSupply(state, ticker) {
+    const a = getAsset(ticker);
+    if (!a || a.category !== 'stock' || !a.outstandingShares) return Infinity;
+    return Math.max(0, a.outstandingShares - ownedUnits(state, ticker));
+  }
+
+  function ownershipPct(state, ticker) {
+    const a = getAsset(ticker);
+    if (!a || !a.outstandingShares) return 0;
+    return ownedUnits(state, ticker) / a.outstandingShares;
+  }
+
+  function isBandar(state, ticker) {
+    return ownershipPct(state, ticker) >= 0.5;
+  }
+
   /* ---------- Daily price evolution ----------
-     Phase 5: each asset's new price = current * (1 + drift + newsImpact)
-     `todaysNews` is an array of news items: {ticker, sentiment, ...}
-     The same news item drives the SAME asset's instant spike/drop. */
-  function calculateNextDayPrices(state, todaysNews) {
+     Phase 6 reorder:
+       1. Drain state.pendingNewsEffects[] FIRST. Each entry carries a
+          pre-rolled multiplier rolled when the headline was generated
+          yesterday (or by Goreng Saham). Multipliers stack additively
+          per ticker.
+       2. Apply baseline drift + per-ticker pending impact.
+     `todaysNews` is accepted for backward compat but no longer drives
+     same-day spikes — news.js queues today's effects for tomorrow. */
+  function calculateNextDayPrices(state, _todaysNewsIgnored) {
     if (!state.assetPrices) seedMarket(state);
 
-    // Build a quick lookup: ticker -> sentiment of today's news
-    const newsByTicker = {};
-    (todaysNews || []).forEach(n => {
-      if (!n || !n.ticker) return;
-      newsByTicker[n.ticker] = n.sentiment;
+    /* 1. Drain pending news effects into a per-ticker bonus. */
+    const bonusByTicker = {};
+    const pending = Array.isArray(state.pendingNewsEffects)
+      ? state.pendingNewsEffects : [];
+    pending.forEach(p => {
+      if (!p || !p.ticker || typeof p.multiplier !== 'number') return;
+      bonusByTicker[p.ticker] = (bonusByTicker[p.ticker] || 0) + p.multiplier;
     });
+    state.pendingNewsEffects = [];
 
+    /* 2. Walk every asset. */
     ASSETS.forEach(asset => {
       const cur = state.assetPrices[asset.ticker];
       if (cur == null) return;
@@ -199,9 +241,8 @@
       // baseline drift: gaussian-ish noise centered on 0
       const drift = (Math.random() - 0.5) * asset.volatility * 2;
 
-      // news impact (if asset is mentioned today)
-      const sentiment = newsByTicker[asset.ticker];
-      const impact = sentiment ? newsImpactPct(asset, sentiment) : 0;
+      // delayed news / goreng impact
+      const impact = bonusByTicker[asset.ticker] || 0;
 
       let pct = drift + impact;
 
@@ -253,5 +294,10 @@
     calculateNextDayPrices,
     dailyChangePct,
     formatPrice,
+    // Phase 6 — Bandar / supply
+    ownedUnits,
+    availableSupply,
+    ownershipPct,
+    isBandar,
   });
 })(window);

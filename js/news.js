@@ -139,8 +139,10 @@
      generateDailyNews(state)
      - Picks 2..4 distinct assets across all 45.
      - Rolls a sentiment per asset (50/50 by default).
-     - Returns array of { day, ticker, name, category, sentiment, headline, body }
-     - Does NOT mutate state.priceMap; market.js applies impacts.
+     - Phase 6: pre-rolls the EXACT multiplier this headline will deliver
+       on the NEXT calculateNextDayPrices() call (via queueNewsEffects).
+     - Returns array of { day, ticker, name, category, sentiment, multiplier,
+                          headline, body }
      ========================================================================= */
   function generateDailyNews(state) {
     const assets = JI.ASSETS || [];
@@ -151,16 +153,67 @@
 
     return shuffled.map(asset => {
       const sentiment = Math.random() < 0.5 ? 'bullish' : 'bearish';
+      const multiplier = JI.newsImpactPct(asset, sentiment);
       return {
         day: state.totalDays,
         ticker: asset.ticker,
         name: asset.name,
         category: asset.category,
         sentiment,
+        // Phase 6: pre-rolled multiplier (decimal, e.g. +0.123 = +12.3%).
+        // loop.js pushes this into state.pendingNewsEffects so the impact
+        // lands on the NEXT calculateNextDayPrices() call.
+        multiplier,
         headline: pickHeadline(asset, sentiment),
         body: buildBody(asset, sentiment),
       };
     });
+  }
+
+  /* =========================================================================
+     queueNewsEffects(state, newsItems)
+     Push every (ticker, multiplier) into state.pendingNewsEffects so they
+     land on the NEXT day's price walk. Skips items without a numeric
+     multiplier (e.g. macro headlines without a target).
+     ========================================================================= */
+  function queueNewsEffects(state, newsItems) {
+    if (!Array.isArray(newsItems)) return [];
+    state.pendingNewsEffects = state.pendingNewsEffects || [];
+    const queued = [];
+    newsItems.forEach(n => {
+      if (!n || !n.ticker || typeof n.multiplier !== 'number' || !isFinite(n.multiplier)) return;
+      state.pendingNewsEffects.push({
+        ticker: n.ticker,
+        multiplier: n.multiplier,
+        sourceDay: n.day || state.totalDays,
+        source: n.source || 'news',
+      });
+      queued.push({ ticker: n.ticker, multiplier: n.multiplier });
+    });
+    return queued;
+  }
+
+  /* =========================================================================
+     buildGorengHeadline(state, ticker)
+     Phase 6 — when the Bandar fires "Goreng Saham" we synthesize a
+     dedicated [GORENG] headline so the news feed surfaces what just
+     happened the SAME day, even though the +40% multiplier lands the next.
+     ========================================================================= */
+  function buildGorengHeadline(state, ticker) {
+    const asset = JI.getAsset(ticker);
+    if (!asset) return null;
+    return {
+      day: state.totalDays,
+      ticker,
+      name: asset.name,
+      category: asset.category,
+      sentiment: 'bullish',
+      multiplier: 0.40, // pre-rolled; +40% lands NEXT day
+      source: 'goreng',
+      headline: `[GORENG] Bandar Pump Saham ${asset.name}!`,
+      body: `Pasar curiga: volume ${ticker} meledak tanpa katalis fundamental. ` +
+            'Pelaku pasar menduga pengendali saham sedang menggerakkan harga.',
+    };
   }
 
   /* ---------- Convenience: get news for a specific day ---------- */
@@ -172,6 +225,8 @@
   Object.assign(JI, {
     NEWS_TEMPLATES,
     generateDailyNews,
+    queueNewsEffects,
+    buildGorengHeadline,
     newsForDay,
     pickHeadline,
   });

@@ -148,7 +148,7 @@
       news:      renderNewsPanel,
       coretax:   () => renderPlaceholder(panel, 'CoreTax DJP', 'Pelaporan SPT & PPh hadir di Phase 6.'),
       hrd:       () => renderPlaceholder(panel, 'HRD', 'Rekrutmen karyawan hadir di Phase 6.'),
-      aset:      () => renderPlaceholder(panel, 'Aset Fisik', 'Properti, mobil & kantor hadir di Phase 6.'),
+      aset:      renderAsetPanel,
     };
     (renderers[id] || (() => {}))(panel);
   }
@@ -300,6 +300,15 @@
       JI.toast(`Hari ${s.totalDays}: ${sample.headline}`, 'info', 3500);
     } else {
       JI.toast(`Hari ${s.totalDays}: pasar tenang.`, 'info');
+    }
+
+    // Phase 6 — Mega Infrastruktur income feedback
+    if (report && report.infraReport && report.infraReport.total > 0) {
+      const ir = report.infraReport;
+      JI.toast(
+        `🏗️ Income Sektor Riil +${JI.formatIDR(ir.total)} → ${ir.bankName}`,
+        'success', 4500
+      );
     }
 
     // Phase 7 — Venture Builder feedback
@@ -709,17 +718,45 @@
 
     const card = JI.el('div', { class: 'ji-card p-4' });
 
+    /* Phase 6 — ownership / Bandar badge for capped local stocks. */
+    let ownershipBadge = null;
+    if (asset.category === 'stock' && asset.outstandingShares &&
+        typeof JI.ownershipPct === 'function') {
+      const pct = JI.ownershipPct(s, asset.ticker);
+      if (pct > 0) {
+        const isBandar = pct >= 0.5;
+        ownershipBadge = JI.el('span', {
+          class: `text-[10px] font-mono px-2 py-0.5 rounded-full ${
+            isBandar
+              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+              : 'bg-slate-100 text-slate-600 border border-slate-200'
+          }`,
+        }, `${isBandar ? '👑 Bandar · ' : ''}${(pct * 100).toFixed(2)}%`);
+      }
+    }
+
     card.appendChild(JI.el('div', { class: 'flex items-start justify-between mb-2 gap-2' }, [
       JI.el('div', {}, [
         JI.el('p', { class: 'font-mono text-xs text-slate-500' }, asset.ticker),
         JI.el('h4', { class: 'font-semibold text-sm leading-tight' }, asset.name),
         asset.sector ? JI.el('p', { class: 'text-[10px] text-slate-400 uppercase tracking-wider' }, asset.sector) : null,
+        ownershipBadge ? JI.el('div', { class: 'mt-1' }, [ownershipBadge]) : null,
       ]),
       JI.el('span', { class: `font-mono text-xs ${chColor}` },
         ch === 0 ? '—' : `${chSign}${(ch * 100).toFixed(1)}%`),
     ]));
 
     card.appendChild(JI.el('p', { class: 'font-mono text-lg font-bold mb-3' }, JI.formatPrice(asset.ticker, price)));
+
+    /* Phase 6 — supply hint for capped local stocks. */
+    if (asset.category === 'stock' && asset.outstandingShares &&
+        typeof JI.availableSupply === 'function') {
+      const avail = JI.availableSupply(JI.gameState, asset.ticker);
+      const total = asset.outstandingShares;
+      card.appendChild(JI.el('p', {
+        class: 'text-[10px] text-slate-500 font-mono mb-2',
+      }, `Sisa supply: ${avail.toLocaleString('id-ID')} / ${total.toLocaleString('id-ID')}`));
+    }
 
     const qtyInput = JI.el('input', {
       type: 'number', inputmode: 'numeric', min: '1', step: '1',
@@ -806,10 +843,27 @@
 
     const card = JI.el('div', { class: 'ji-card p-4' });
 
+    /* Phase 6 — ownership / Bandar badge */
+    let ownershipBadge = null;
+    let isBandar = false;
+    if (asset && asset.category === 'stock' && asset.outstandingShares &&
+        typeof JI.ownershipPct === 'function') {
+      const pct = JI.ownershipPct(s, pos.ticker);
+      isBandar = pct >= 0.5;
+      ownershipBadge = JI.el('span', {
+        class: `text-[10px] font-mono px-2 py-0.5 rounded-full ${
+          isBandar
+            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+            : 'bg-slate-100 text-slate-600 border border-slate-200'
+        }`,
+      }, `${isBandar ? '👑 Bandar · ' : ''}${(pct * 100).toFixed(2)}%`);
+    }
+
     card.appendChild(JI.el('div', { class: 'flex items-start justify-between gap-2 mb-3' }, [
       JI.el('div', {}, [
         JI.el('p', { class: 'font-mono text-xs text-slate-500' }, pos.ticker),
         JI.el('h4', { class: 'font-semibold' }, asset ? asset.name : pos.ticker),
+        ownershipBadge ? JI.el('div', { class: 'mt-1' }, [ownershipBadge]) : null,
       ]),
       JI.el('span', { class: `font-mono text-sm ${pnlColor}` },
         `${snap.pnl >= 0 ? '+' : ''}${(snap.pnlPct * 100).toFixed(2)}%`),
@@ -855,6 +909,40 @@
     }, 'SELL');
 
     card.appendChild(JI.el('div', { class: 'grid grid-cols-2 gap-2' }, [qtyInput, sellBtn]));
+
+    /* Phase 6 — Goreng Saham (only visible for Bandars on local stocks). */
+    if (isBandar) {
+      const cost = JI.GORENG_COST || 5_000_000_000;
+      const alreadyGorenged = !!(s.gorengedTickers && s.gorengedTickers[pos.ticker]);
+      const gorengBtn = JI.el('button', {
+        class: `ji-btn ${alreadyGorenged ? 'ji-btn-ghost opacity-60 cursor-not-allowed' : 'ji-btn-primary'} w-full mt-2`,
+        onclick: () => {
+          if (alreadyGorenged) {
+            JI.toast(`${pos.ticker} sudah pernah digoreng.`, 'warning');
+            return;
+          }
+          if (!confirm(
+            `Goreng Saham ${pos.ticker}?\n` +
+            `Biaya ${JI.formatIDR(cost)} (didebit dari rekening terkaya).\n` +
+            `+40% akan turun ke harga ${pos.ticker} pada Next Day. Sekali jalan saja.`
+          )) return;
+          const r = JI.gorengSaham(s, pos.ticker);
+          if (!r.ok) { JI.toast(r.error, 'error'); return; }
+          JI.toast(
+            `🔥 Goreng ${pos.ticker} aktif! ${JI.formatIDR(r.cost)} dipotong ${r.bankName}. ` +
+            `+${(r.multiplier * 100).toFixed(0)}% akan turun di Next Day.`,
+            'success', 5000
+          );
+          JI.saveState(s);
+          renderHeader();
+          renderActivePanel();
+        },
+      }, alreadyGorenged
+            ? `🔥 ${pos.ticker} sudah digoreng`
+            : `🔥 Goreng ${pos.ticker} · ${JI.formatIDR(cost)}`);
+      card.appendChild(gorengBtn);
+    }
+
     return card;
   }
 
@@ -1619,6 +1707,129 @@
         renderActivePanel();
       });
     }
+  }
+
+  /* =========================================================================
+     Aset Fisik panel — Phase 6 Mega Infrastruktur (Sektor Riil).
+     Five billion-tier income-generating positions. Cost is debited
+     from the RICHEST single bank only — no overdraft, no split.
+     Daily income auto-credits to the same richest bank during Next Day.
+     ========================================================================= */
+  function renderAsetPanel(panel) {
+    const s = JI.gameState;
+    if (typeof JI.ensureInfraState === 'function') JI.ensureInfraState(s);
+    panel.innerHTML = '';
+
+    panel.appendChild(JI.el('div', { class: 'mb-5 flex items-end justify-between gap-3 flex-wrap' }, [
+      JI.el('div', {}, [
+        JI.el('h2', { class: 'text-2xl sm:text-3xl font-bold' }, 'Aset Fisik'),
+        JI.el('p', { class: 'text-slate-500 text-sm mt-1' },
+          'Mega Infrastruktur · Sektor Riil. Income harian otomatis masuk rekening terkaya setiap Next Day.'),
+      ]),
+      JI.el('button', { class: 'ji-btn ji-btn-success', onclick: handleNextDayClick }, '⏭  Next Day'),
+    ]));
+
+    const defs = JI.INFRASTRUCTURE_DEFS || [];
+    const totalValue  = (typeof JI.totalInfrastructureValue === 'function')
+      ? JI.totalInfrastructureValue(s) : 0;
+    const totalIncome = (typeof JI.totalInfrastructureDailyIncome === 'function')
+      ? JI.totalInfrastructureDailyIncome(s) : 0;
+
+    panel.appendChild(JI.el('div', { class: 'grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5' }, [
+      statCard({ label: 'Total Book Value', value: JI.formatIDR(totalValue), accent: 'text-slate-900' }),
+      statCard({
+        label: 'Income / Hari',
+        value: JI.formatIDR(totalIncome),
+        accent: totalIncome > 0 ? 'text-emerald-600' : 'text-slate-700',
+        sub: totalIncome > 0 ? 'auto-credit ke rekening terkaya' : '',
+      }),
+    ]));
+
+    panel.appendChild(JI.el('h3', {
+      class: 'text-sm uppercase tracking-wider text-slate-500 mb-2',
+    }, 'Mega Infrastruktur'));
+
+    const grid = JI.el('div', { class: 'grid grid-cols-1 md:grid-cols-2 gap-3' });
+    defs.forEach(def => grid.appendChild(renderInfraCard(def)));
+    panel.appendChild(grid);
+
+    if (defs.length === 0) {
+      panel.appendChild(JI.el('p', { class: 'text-slate-500 text-sm' }, 'Tidak ada infrastruktur tersedia.'));
+    }
+
+    /* Properti / mobil placeholder kept for future phase. */
+    panel.appendChild(JI.el('div', { class: 'mt-6 ji-card p-5 text-center' }, [
+      JI.el('div', { class: 'text-3xl mb-2' }, '🚧'),
+      JI.el('p', { class: 'text-slate-500 text-sm' },
+        'Properti pribadi, mobil & kantor menyusul di update berikutnya.'),
+    ]));
+  }
+
+  function renderInfraCard(def) {
+    const s = JI.gameState;
+    const qty = (typeof JI.infraQty === 'function') ? JI.infraQty(s, def.id) : 0;
+
+    const card = JI.el('div', { class: 'ji-card p-4' });
+
+    card.appendChild(JI.el('div', { class: 'flex items-start justify-between gap-3 mb-2' }, [
+      JI.el('div', { class: 'flex items-start gap-3' }, [
+        JI.el('div', { class: 'text-3xl leading-none' }, def.icon || '🏗️'),
+        JI.el('div', {}, [
+          JI.el('h4', { class: 'font-semibold text-base leading-tight' }, def.name),
+          JI.el('p', { class: 'text-[10px] text-slate-400 uppercase tracking-wider' }, def.tier),
+          JI.el('p', { class: 'text-xs text-slate-500 mt-0.5' }, def.tagline),
+        ]),
+      ]),
+      qty > 0
+        ? JI.el('span', {
+            class: 'text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap',
+          }, `Qty · ${qty}`)
+        : null,
+    ]));
+
+    card.appendChild(JI.el('div', { class: 'grid grid-cols-2 gap-2 text-sm mt-3 mb-3' }, [
+      kv('Harga', JI.formatIDR(def.cost)),
+      kv('Income / Hari', JI.formatIDR(def.dailyIncome), 'text-emerald-600 font-semibold'),
+    ]));
+
+    /* Affordability hint based on richest bank balance. */
+    const banks = s.banks || [];
+    const richest = banks.reduce(
+      (b, x) => (b == null || x.balance > b.balance ? x : b), null);
+    const richestBal = richest ? richest.balance : 0;
+    const affordable = richestBal >= def.cost;
+    const hint = richest
+      ? (affordable
+          ? `✅ ${richest.shortName} cukup (${JI.formatIDR(richestBal)})`
+          : `⚠️ Saldo ${richest.shortName} kurang. Punya ${JI.formatIDR(richestBal)}, butuh ${JI.formatIDR(def.cost)}.`)
+      : '⚠️ Belum ada rekening.';
+    card.appendChild(JI.el('p', {
+      class: `text-[11px] font-mono mb-2 ${affordable ? 'text-slate-500' : 'text-amber-700'}`,
+    }, hint));
+
+    const buyBtn = JI.el('button', {
+      class: `ji-btn w-full ${affordable ? 'ji-btn-primary' : 'ji-btn-ghost opacity-60 cursor-not-allowed'}`,
+      onclick: () => {
+        if (!confirm(
+          `Beli ${def.name}?\n\n` +
+          `Harga: ${JI.formatIDR(def.cost)} (didebit dari rekening terkaya, tanpa split).\n` +
+          `Income: ${JI.formatIDR(def.dailyIncome)} / hari.\n\n` +
+          `Saldo dipotong sekarang. Income otomatis turun setiap Next Day.`
+        )) return;
+        const r = JI.buyInfrastructure(s, def.id);
+        if (!r.ok) { JI.toast(r.error, 'error'); return; }
+        JI.toast(
+          `🏗️ ${r.name} dibeli. ${JI.formatIDR(r.cost)} dipotong ${r.bankName}. Income +${JI.formatIDR(r.dailyIncome)}/hari.`,
+          'success', 5000
+        );
+        JI.saveState(s);
+        renderHeader();
+        renderActivePanel();
+      },
+    }, qty > 0 ? `Beli Lagi · ${JI.formatIDR(def.cost)}` : `Beli · ${JI.formatIDR(def.cost)}`);
+    card.appendChild(buyBtn);
+
+    return card;
   }
 
   /* ---------- Expose ---------- */

@@ -9,7 +9,7 @@
 
   const STORAGE_KEY = 'juragan_investasi_state_v1';
   const STARTING_CAPITAL = 150_000_000; // Rp 150jt (legacy fallback)
-  const STATE_VERSION = 3;
+  const STATE_VERSION = 4;
   const DEFAULT_DAILY_OPS_COST = 500_000; // Rp 500rb / hari (placeholder)
 
   // Phase 7 — custom starting capital bounds
@@ -69,6 +69,15 @@
       newsHistory: [],        // [{day, ticker, headline, sentiment, category}]
       todaysNews: [],         // shortcut to today's headlines
 
+      // Phase 6 — delayed news effects.
+      // Each entry: { ticker, multiplier, sourceDay, source: 'news'|'goreng' }
+      // Drained at the START of calculateNextDayPrices() so headlines
+      // published on Day N land on Day N+1.
+      pendingNewsEffects: [],
+
+      // Phase 6 — once a Bandar gorengs a ticker it can never be re-gorenged.
+      gorengedTickers: {},
+
       // ----- Random events -----
       eventLog: [],           // [{day, id, title, type}]
       pendingEvent: null,     // event currently waiting to be acknowledged in UI
@@ -86,6 +95,8 @@
         cars:          [],
         motorcycles:   [],
         officeCapacity: 0,
+        // Phase 6 — Mega Infrastruktur (Sektor Riil) qty by id.
+        infrastructure: {},
       },
 
       // Phase 7 — Venture Builder
@@ -112,7 +123,9 @@
   /* ---------- Migrations ----------
      v1 -> v2: add Phase 5 fields without nuking the player's banks/level.
      v2 -> v3: add Phase 7 fields (player identity, venture, IPO). Existing
-               saves with banks already populated are considered initialized. */
+               saves with banks already populated are considered initialized.
+     v3 -> v4: Phase 6 — add pendingNewsEffects queue, gorengedTickers
+               registry, and physicalAssets.infrastructure default. */
   function migrate(state) {
     if (!state) return defaultState();
 
@@ -160,6 +173,25 @@
       };
     }
 
+    // v3 -> v4: Phase 6 — delayed news + bandar/goreng + mega infrastruktur.
+    if (state.version < 4) {
+      const physical = state.physicalAssets || {
+        properties: [], cars: [], motorcycles: [], officeCapacity: 0,
+      };
+      state = {
+        ...state,
+        pendingNewsEffects: Array.isArray(state.pendingNewsEffects) ? state.pendingNewsEffects : [],
+        gorengedTickers:    state.gorengedTickers && typeof state.gorengedTickers === 'object'
+                              ? state.gorengedTickers : {},
+        physicalAssets: {
+          ...physical,
+          infrastructure: physical.infrastructure && typeof physical.infrastructure === 'object'
+                            ? physical.infrastructure : {},
+        },
+        version: 4,
+      };
+    }
+
     return state;
   }
 
@@ -188,7 +220,8 @@
   }
 
   /* ---------- Net worth recompute ----------
-     Banks balance + portfolio market value − active loan + CC debt.
+     Banks balance + portfolio market value + Mega Infrastruktur book value
+     − active loan + CC debt.
   */
   function recomputeNetWorth(state) {
     const bankSum = (state.banks || []).reduce((a, b) => a + (b.balance || 0), 0);
@@ -204,7 +237,10 @@
       const px = (state.assetPrices || {})[p.ticker] || 0;
       return a + px * (p.qty || 0);
     }, 0);
-    state.totalNetWorth = bankSum + portfolioValue - loanDebt - ccDebt;
+    const infraValue = typeof JI.totalInfrastructureValue === 'function'
+      ? JI.totalInfrastructureValue(state)
+      : 0;
+    state.totalNetWorth = bankSum + portfolioValue + infraValue - loanDebt - ccDebt;
     return state.totalNetWorth;
   }
 

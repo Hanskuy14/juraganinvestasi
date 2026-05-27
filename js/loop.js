@@ -4,22 +4,32 @@
    Phase 5 RULES enforced here:
      - NO XP is added to companyXP from this loop.
      - 8% chance to fire a random event (events.js handles selection).
-     - Asset-specific news is generated FIRST, then drives price impacts.
-     - opsCostMultiplierToday is reset at the START of every day, then can
-       be modified by an event (e.g. Indihome Mati x5) before ops cost is
-       deducted at the END of the day.
+
+   Phase 6 reorder:
+     - Price walk runs FIRST and drains state.pendingNewsEffects from
+       yesterday (delayed news effect). Same-day news no longer drives
+       same-day prices.
+     - generateDailyNews() runs AFTER the walk and queues today's
+       multipliers into pendingNewsEffects so they land tomorrow.
+     - injectInfrastructureIncome() credits Mega Infrastruktur income
+       to the richest bank during the same daily tick.
+     - Random events still apply price moves immediately (they are
+       acknowledged-impact pop-ups, not delayed news).
 
    Order of operations in nextDay():
      1. Increment totalDays.
      2. Reset opsCostMultiplierToday = 1.
-     3. Generate today's asset news (2..4 headlines).
-     4. calculateNextDayPrices(state, todaysNews)  → instant spikes/drops.
+     3. calculateNextDayPrices(state) → drift + drain yesterday's queue.
+     4. Generate today's asset news (2..4 headlines), queue effects for
+        tomorrow.
      5. Roll random event (8%) — may stack additional price moves, deduct
         cash, set ops cost multiplier, award XP (Podcast), or clear taxes.
-     6. Loan installments: deduct daily installment per active loan.
-     7. Daily operational cost = dailyOpsCost * opsCostMultiplierToday,
+     6. injectInfrastructureIncome → credit Sektor Riil income.
+     7. Loan installments.
+     8. Daily operational cost = dailyOpsCost * opsCostMultiplierToday,
         deducted from richest bank.
-     8. recomputeNetWorth + saveState.
+     9. Phase 7: venture monthly burn + e-IPO ticks.
+    10. recomputeNetWorth + saveState.
    ========================================================================= */
 
 (function (global) {
@@ -83,7 +93,13 @@
     /* 2. Reset per-day modifiers. */
     state.opsCostMultiplierToday = 1;
 
-    /* 3. Generate today's asset news. */
+    /* 3. Phase 6 — price walk FIRST. Drains state.pendingNewsEffects
+          from yesterday + applies baseline drift. */
+    if (typeof JI.calculateNextDayPrices === 'function') {
+      JI.calculateNextDayPrices(state);
+    }
+
+    /* 4. Generate today's asset news (visible same-day, impact tomorrow). */
     const todaysNews = (typeof JI.generateDailyNews === 'function')
       ? JI.generateDailyNews(state)
       : [];
@@ -92,30 +108,37 @@
     state.newsHistory.unshift(...todaysNews);
     if (state.newsHistory.length > 200) state.newsHistory.length = 200;
 
-    /* 4. Apply baseline drift + per-asset news impact. */
-    if (typeof JI.calculateNextDayPrices === 'function') {
-      JI.calculateNextDayPrices(state, todaysNews);
+    /* 4b. Queue today's pre-rolled multipliers so they fire tomorrow. */
+    if (typeof JI.queueNewsEffects === 'function') {
+      JI.queueNewsEffects(state, todaysNews);
     }
 
     /* 5. Random event roll (8%). May modify prices / cash / XP / taxes /
-          opsCostMultiplierToday. */
+          opsCostMultiplierToday. Events still apply instantly. */
     let event = null;
     if (typeof JI.rollRandomEvent === 'function') {
       event = JI.rollRandomEvent(state);
     }
 
-    /* 6. Loan installments. */
+    /* 6. Phase 6 — Mega Infrastruktur daily income. Auto-credit to the
+          richest bank. */
+    let infraReport = null;
+    if (typeof JI.injectInfrastructureIncome === 'function') {
+      infraReport = JI.injectInfrastructureIncome(state);
+    }
+
+    /* 7. Loan installments. */
     const loanReport = processLoanInstallments(state);
 
-    /* 7. Daily operational cost (with optional event multiplier). */
+    /* 8. Daily operational cost (with optional event multiplier). */
     const opsReport = chargeOperationalCost(state);
 
-    /* 8. Phase 7 — Venture monthly burn (every 30 days from foundedDay). */
+    /* 9. Phase 7 — Venture monthly burn (every 30 days from foundedDay). */
     const ventureReport = (typeof JI.processMonthlyBurn === 'function')
       ? JI.processMonthlyBurn(state)
       : null;
 
-    /* 9. Phase 7 — e-IPO daily ticks: process listings (settle orders) THEN
+    /* 10. Phase 7 — e-IPO daily ticks: process listings (settle orders) THEN
           maybe spawn a new IPO. Listings happen first so a freshly spawned
           IPO can't accidentally list on the same day. */
     let ipoSpawned = null;
@@ -127,7 +150,7 @@
       ipoSpawned = JI.maybeSpawnIPO(state);
     }
 
-    /* 10. Finalize. (Phase 5: explicitly NO XP awarded here.) */
+    /* 11. Finalize. (Phase 5: explicitly NO XP awarded here.) */
     JI.recomputeNetWorth(state);
     JI.saveState(state);
 
@@ -137,6 +160,7 @@
       event,            // null or populated event object
       loanReport,
       opsReport,
+      infraReport,      // Phase 6
       ventureReport,    // Phase 7
       ipoSpawned,       // Phase 7
       ipoListings,      // Phase 7

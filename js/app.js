@@ -80,6 +80,12 @@
     s.meta.initialized = true;
     s.totalDays = 1;
 
+    // Phase 6 — seed Day-1 news so headlines are visible immediately and
+    //          their multipliers land on the first Next Day click.
+    s.todaysNews = [];
+    s.pendingNewsEffects = [];
+    seedDay1News(s);
+
     JI.recomputeNetWorth(s);
     JI.saveState(s);
 
@@ -104,6 +110,17 @@
       JI.initBanks(JI.gameState);
     }
 
+    // 3b. Phase 6 — ensure infrastructure state is shaped.
+    if (typeof JI.ensureInfraState === 'function') {
+      JI.ensureInfraState(JI.gameState);
+    }
+
+    // 3c. Phase 6 — seed Day-1 news so headlines are visible immediately
+    //              and their multipliers land when the player clicks Next
+    //              Day for the first time. Skip if today's news already
+    //              generated (e.g. reload mid-day).
+    seedDay1News(JI.gameState);
+
     JI.recomputeNetWorth(JI.gameState);
     JI.saveState(JI.gameState);
 
@@ -117,6 +134,29 @@
         JI.renderHeader();
       }
     }, 30_000);
+  }
+
+  /* ---------- Day-1 news seeding (Phase 6) ----------
+     Generates 2..4 headlines for the current day, queues their pre-rolled
+     multipliers into state.pendingNewsEffects, and stores them in
+     state.todaysNews / newsHistory so the News tab shows them today.
+
+     Idempotent: runs only when there is no news for the current day yet.
+  */
+  function seedDay1News(state) {
+    if (!state || typeof JI.generateDailyNews !== 'function') return;
+    const day = state.totalDays || 1;
+    const todays = (state.todaysNews || []).filter(n => n && n.day === day);
+    if (todays.length > 0) return;
+    const news = JI.generateDailyNews(state);
+    if (!news || !news.length) return;
+    state.todaysNews = news.slice();
+    state.newsHistory = state.newsHistory || [];
+    state.newsHistory.unshift(...news);
+    if (state.newsHistory.length > 200) state.newsHistory.length = 200;
+    if (typeof JI.queueNewsEffects === 'function') {
+      JI.queueNewsEffects(state, news);
+    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {

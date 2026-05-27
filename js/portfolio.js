@@ -55,6 +55,21 @@
     const q = Math.max(0, Math.floor(Number(qty) || 0));
     if (q <= 0) return { ok: false, error: 'Jumlah unit harus lebih dari 0.' };
 
+    /* Phase 6 — circulating supply cap on local stocks. */
+    if (asset.category === 'stock' && asset.outstandingShares) {
+      const avail = typeof JI.availableSupply === 'function'
+        ? JI.availableSupply(state, ticker)
+        : Infinity;
+      if (q > avail) {
+        const totalShares = asset.outstandingShares.toLocaleString('id-ID');
+        const availStr = avail.toLocaleString('id-ID');
+        return {
+          ok: false,
+          error: `Supply ${ticker} tidak cukup. Beredar ${totalShares} lembar, sisa ${availStr}.`,
+        };
+      }
+    }
+
     const price = JI.getCurrentPrice(state, ticker);
     if (!price || price <= 0) {
       return { ok: false, error: 'Harga aset belum tersedia.' };
@@ -165,6 +180,88 @@
   }
 
   /* ============================================================
+     GORENG SAHAM (Phase 6)
+     A Bandar (>=50% owner of a local stock) can spend Rp 5 Miliar to
+     "goreng" their position: this debits the richest bank (no overdraft,
+     no split — same rule as Mega Infrastruktur), queues a guaranteed
+     +40% multiplier into state.pendingNewsEffects (lands NEXT day),
+     and pushes a [GORENG] headline into the news feed the SAME day.
+     One-shot per ticker — once gorenged it's blocked forever.
+     ============================================================ */
+  const GORENG_COST = 5_000_000_000; // Rp 5 Miliar
+  const GORENG_MULT = 0.40;          // +40% next day
+
+  function gorengSaham(state, ticker) {
+    const asset = JI.getAsset(ticker);
+    if (!asset || asset.category !== 'stock' || !asset.outstandingShares) {
+      return { ok: false, error: 'Hanya saham lokal IDX yang bisa digoreng.' };
+    }
+
+    if (typeof JI.isBandar !== 'function' || !JI.isBandar(state, ticker)) {
+      const pct = (typeof JI.ownershipPct === 'function')
+        ? (JI.ownershipPct(state, ticker) * 100).toFixed(2)
+        : '0.00';
+      return {
+        ok: false,
+        error: `Status Bandar belum aktif (kepemilikan ${pct}% / butuh ≥50%).`,
+      };
+    }
+
+    state.gorengedTickers = state.gorengedTickers || {};
+    if (state.gorengedTickers[ticker]) {
+      return { ok: false, error: `${ticker} sudah pernah digoreng. Sekali jalan saja.` };
+    }
+
+    const bank = richestBank(state);
+    if (!bank) return { ok: false, error: 'Tidak ada rekening untuk pembayaran.' };
+    if (bank.balance < GORENG_COST) {
+      return {
+        ok: false,
+        error: `Saldo ${bank.shortName} tidak cukup. Butuh ${JI.formatIDR(GORENG_COST)} cash di satu rekening.`,
+      };
+    }
+
+    // Debit (no split, no overdraft).
+    bank.balance -= GORENG_COST;
+    state.gorengedTickers[ticker] = {
+      day: state.totalDays || 1,
+      bankId: bank.id,
+    };
+
+    // Queue +40% multiplier for tomorrow.
+    state.pendingNewsEffects = state.pendingNewsEffects || [];
+    state.pendingNewsEffects.push({
+      ticker,
+      multiplier: GORENG_MULT,
+      sourceDay: state.totalDays || 1,
+      source: 'goreng',
+    });
+
+    // Surface a [GORENG] headline TODAY in the news feed.
+    if (typeof JI.buildGorengHeadline === 'function') {
+      const headline = JI.buildGorengHeadline(state, ticker);
+      if (headline) {
+        state.todaysNews = Array.isArray(state.todaysNews) ? state.todaysNews : [];
+        state.todaysNews.unshift(headline);
+        state.newsHistory = Array.isArray(state.newsHistory) ? state.newsHistory : [];
+        state.newsHistory.unshift(headline);
+        if (state.newsHistory.length > 200) state.newsHistory.length = 200;
+      }
+    }
+
+    JI.recomputeNetWorth(state);
+
+    return {
+      ok: true,
+      ticker,
+      cost: GORENG_COST,
+      multiplier: GORENG_MULT,
+      bankId: bank.id,
+      bankName: bank.shortName || bank.name,
+    };
+  }
+
+  /* ============================================================
      Read helpers
      ============================================================ */
   function positionSnapshot(state, pos) {
@@ -214,5 +311,9 @@
     findPosition,
     positionSnapshot,
     portfolioMarketValue,
+    // Phase 6 — Bandar / Goreng Saham
+    gorengSaham,
+    GORENG_COST,
+    GORENG_MULT,
   });
 })(window);
