@@ -55,11 +55,13 @@
 
   /* ---------- Credit card rules ----------
      Approval & limit are based on current bank balance.
-     Limit = 50% of balance, capped at Rp 100,000,000.
+     Initial offer:  Limit = 50% of balance, capped at Rp 100,000,000.
+     Upgrade (Phase 7): Limit = 50% of CURRENT balance, capped at Rp 1,000,000,000.
      Minimum balance to qualify: Rp 5,000,000.
   */
-  const CC_MIN_BALANCE = 5_000_000;
-  const CC_MAX_LIMIT   = 100_000_000;
+  const CC_MIN_BALANCE     = 5_000_000;
+  const CC_MAX_LIMIT       = 100_000_000;
+  const CC_MAX_LIMIT_UPGRADE = 1_000_000_000;
 
   function creditCardOffer(balance) {
     if (balance < CC_MIN_BALANCE) {
@@ -118,33 +120,27 @@
         daysRemaining: 0,
         startedOnDay: 0,
       },
-      // Phase 4
-      history: [],
-      depositos: [],
     };
   }
 
   /* ---------- Initialize banks on a fresh state ---------- */
-  function initBanks(state) {
+  function initBanks(state, customCapital) {
     if (!state) return;
     if (state.banks && state.banks.length === BANK_DEFS.length) {
-      // Already initialized — refresh tiers + ensure Phase 4 fields exist.
-      state.banks.forEach(b => {
-        b.debitTier = debitTierFor(b.balance);
-        if (!Array.isArray(b.history))   b.history = [];
-        if (!Array.isArray(b.depositos)) b.depositos = [];
-      });
+      // Already initialized — just refresh tiers in case rules changed.
+      state.banks.forEach(b => (b.debitTier = debitTierFor(b.balance)));
       return;
     }
 
-    const total = JI.STARTING_CAPITAL;
-    const parts = JI.splitUnequal(total, BANK_DEFS.length, 5_000_000);
+    // Phase 7: support custom starting capital from main menu.
+    const total = Number(customCapital) > 0
+      ? Math.floor(Number(customCapital))
+      : (state.startingCapital || JI.STARTING_CAPITAL);
+    // Min part: keep small but proportional so tiny starts (Rp 10jt) work.
+    const minPart = Math.max(1_000_000, Math.floor(total / 100));
+    const parts = JI.splitUnequal(total, BANK_DEFS.length, minPart);
     state.banks = BANK_DEFS.map((def, i) => makeBank(def, parts[i]));
-
-    // Seed each bank with an opening-deposit history entry.
-    state.banks.forEach(b => {
-      recordHistory(state, b, 'IN', b.balance, 'Modal awal Juragan');
-    });
+    state.startingCapital = total;
   }
 
   /* ---------- Lookup ---------- */
@@ -155,228 +151,6 @@
   /* ---------- Refresh derived fields after balance changes ---------- */
   function refreshDerived(bank) {
     bank.debitTier = debitTierFor(bank.balance);
-  }
-
-  /* =========================================================================
-     PHASE 4 — CASH-FLOW AUDIT (Mutasi Rekening)
-     Every cash-in or cash-out at a specific bank funnels through here so
-     bank.history[] is a complete ledger.
-     ========================================================================= */
-  function recordHistory(state, bank, type, amount, description) {
-    if (!bank) return;
-    if (!Array.isArray(bank.history)) bank.history = [];
-    bank.history.push({
-      date: JI.formatCalendar(state.totalDays),
-      day: state.totalDays,
-      type: type,
-      amount: Math.max(0, Math.round(amount || 0)),
-      description: description || '',
-    });
-    if (bank.history.length > 500) {
-      bank.history.splice(0, bank.history.length - 500);
-    }
-  }
-
-  /**
-   * Add cash to a bank with audit trail.
-   */
-  function bankCredit(state, bankId, amount, description) {
-    const bank = getBank(state, bankId);
-    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
-    const amt = Math.max(0, Math.round(Number(amount) || 0));
-    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
-    bank.balance += amt;
-    refreshDerived(bank);
-    recordHistory(state, bank, 'IN', amt, description || 'Penerimaan');
-    return { ok: true, bank, balance: bank.balance };
-  }
-
-  /**
-   * Deduct cash from a bank with audit trail. Refuses if insufficient.
-   */
-  function bankDebit(state, bankId, amount, description) {
-    const bank = getBank(state, bankId);
-    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
-    const amt = Math.max(0, Math.round(Number(amount) || 0));
-    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
-    if (bank.balance < amt) {
-      return { ok: false, error: `Saldo ${bank.shortName} tidak mencukupi.` };
-    }
-    bank.balance -= amt;
-    refreshDerived(bank);
-    recordHistory(state, bank, 'OUT', amt, description || 'Pengeluaran');
-    return { ok: true, bank, balance: bank.balance };
-  }
-
-  /**
-   * Drain richest banks first to cover an amount. Used by IPO dividend.
-   */
-  function debitAcrossBanks(state, amount, description) {
-    let remaining = Math.max(0, Math.round(amount || 0));
-    const drawn = [];
-    if (remaining <= 0) return { ok: true, drawnFrom: drawn, shortfall: 0 };
-
-    const banks = [...(state.banks || [])].sort((a, b) => b.balance - a.balance);
-    for (const b of banks) {
-      if (remaining <= 0) break;
-      if (b.balance <= 0) continue;
-      const take = Math.min(b.balance, remaining);
-      bankDebit(state, b.id, take, description);
-      drawn.push({ bankId: b.id, amount: take });
-      remaining -= take;
-    }
-    return { ok: remaining === 0, drawnFrom: drawn, shortfall: remaining };
-  }
-
-  /**
-   * Pick a random bank id (uniform). Used by passive rental-income deposits.
-   */
-  function pickRandomBankId(state) {
-    const banks = state.banks || [];
-    if (banks.length === 0) return null;
-    return banks[JI.randomInt(0, banks.length - 1)].id;
-  }
-
-  /* =========================================================================
-     UNIVERSAL CHARGE — used by market buys, asset purchases, etc.
-     payment = { method: 'bank' | 'credit', bankId: 'mandiri'|'bca'|'bni' }
-     - 'bank'   : deduct from chosen bank balance
-     - 'credit' : add to credit card 'used' if within available limit
-     ========================================================================= */
-  function charge(state, amount, payment) {
-    const amt = Math.floor(Number(amount) || 0);
-    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
-    if (!payment || !payment.method) {
-      return { ok: false, error: 'Metode pembayaran wajib dipilih.' };
-    }
-    const bank = getBank(state, payment.bankId);
-    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
-
-    if (payment.method === 'bank') {
-      if (bank.balance < amt) {
-        return { ok: false,
-          error: `Saldo ${bank.shortName} tidak cukup (butuh ${JI.formatIDR(amt)}).` };
-      }
-      bank.balance -= amt;
-      refreshDerived(bank);
-      recordHistory(state, bank, 'OUT', amt, payment.label || 'Pembayaran');
-      return { ok: true, method: 'bank', bankId: bank.id, amount: amt };
-    }
-
-    if (payment.method === 'credit') {
-      if (!bank.creditCard.isApproved) {
-        return { ok: false,
-          error: `Kartu kredit ${bank.shortName} belum aktif.` };
-      }
-      const available = bank.creditCard.limit - bank.creditCard.used;
-      if (available < amt) {
-        return { ok: false,
-          error: `Limit kartu kredit ${bank.shortName} tidak cukup (sisa ${JI.formatIDR(available)}).` };
-      }
-      bank.creditCard.used += amt;
-      recordHistory(state, bank, 'OUT', amt,
-        (payment.label || 'Pembayaran') + ' (Kartu Kredit)');
-      return { ok: true, method: 'credit', bankId: bank.id, amount: amt };
-    }
-
-    return { ok: false, error: 'Metode pembayaran tidak dikenali.' };
-  }
-
-  /* ---------- Refund (e.g. unused tax payments) ---------- */
-  function deposit(state, bankId, amount, label) {
-    const amt = Math.floor(Number(amount) || 0);
-    const bank = getBank(state, bankId);
-    if (!bank || amt <= 0) return { ok: false };
-    bank.balance += amt;
-    refreshDerived(bank);
-    recordHistory(state, bank, 'IN', amt, label || 'Setoran');
-    return { ok: true };
-  }
-
-  /* =========================================================================
-     CREDIT CARD repayment from a bank balance.
-     ========================================================================= */
-  function repayCreditCard(state, bankId, amount) {
-    const bank = getBank(state, bankId);
-    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
-    if (!bank.creditCard.isApproved) {
-      return { ok: false, error: 'Kartu kredit belum aktif.' };
-    }
-    let amt = Math.floor(Number(amount) || 0);
-    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
-    if (amt > bank.creditCard.used) amt = bank.creditCard.used;
-    if (bank.balance < amt) {
-      return { ok: false, error: `Saldo ${bank.shortName} tidak cukup.` };
-    }
-    bank.balance -= amt;
-    bank.creditCard.used -= amt;
-    refreshDerived(bank);
-    recordHistory(state, bank, 'OUT', amt, `Pelunasan Kartu Kredit (${bank.shortName})`);
-    JI.recomputeNetWorth(state);
-    return { ok: true, paid: amt };
-  }
-
-  /* =========================================================================
-     DAILY LOAN TICKER — called once per day-advance.
-     For each active loan, deduct dailyInstallment from the same bank's balance.
-     If insufficient: try to pull from credit card limit; otherwise mark missed.
-     When term completes (daysRemaining == 0 and remaining ~0), close loan.
-     ========================================================================= */
-  function tickDailyLoans(state) {
-    const events = [];
-    (state.banks || []).forEach(bank => {
-      if (!bank.loan || !bank.loan.isActive) return;
-      const installment = Math.min(bank.loan.dailyInstallment, bank.loan.remaining);
-
-      if (bank.balance >= installment) {
-        bank.balance -= installment;
-        bank.loan.remaining -= installment;
-        recordHistory(state, bank, 'OUT', installment, 'Cicilan KTA harian');
-        events.push({
-          bankId: bank.id,
-          paid: installment,
-          source: 'bank',
-        });
-      } else if (bank.creditCard.isApproved &&
-                 (bank.creditCard.limit - bank.creditCard.used) >= installment) {
-        // Auto-fallback to credit card
-        bank.creditCard.used += installment;
-        bank.loan.remaining -= installment;
-        recordHistory(state, bank, 'OUT', installment, 'Cicilan KTA via Kartu Kredit');
-        events.push({
-          bankId: bank.id,
-          paid: installment,
-          source: 'credit',
-          warning: true,
-        });
-      } else {
-        // Missed payment — apply small penalty to remaining balance
-        const penalty = Math.round(installment * 0.02);
-        bank.loan.remaining += penalty;
-        events.push({
-          bankId: bank.id,
-          paid: 0,
-          missed: true,
-          penalty,
-        });
-      }
-
-      bank.loan.daysRemaining = Math.max(0, bank.loan.daysRemaining - 1);
-      if (bank.loan.remaining <= 0 || bank.loan.daysRemaining === 0) {
-        // Close loan if fully paid; otherwise allow remainder to roll-up next tick.
-        if (bank.loan.remaining <= 0) {
-          bank.loan = {
-            isActive: false,
-            principal: 0, remaining: 0,
-            dailyInstallment: 0, daysRemaining: 0,
-            startedOnDay: 0,
-          };
-          events.push({ bankId: bank.id, closed: true });
-        }
-      }
-      refreshDerived(bank);
-    });
-    return events;
   }
 
   /* ---------- Operation: Transfer between own bank accounts ---------- */
@@ -398,10 +172,8 @@
     to.balance   += amt;
     refreshDerived(from);
     refreshDerived(to);
-    recordHistory(state, from, 'OUT', amt, `Transfer ke ${to.shortName}`);
-    recordHistory(state, to,   'IN',  amt, `Transfer dari ${from.shortName}`);
     JI.recomputeNetWorth(state);
-    // Phase 5: no XP from transfers. XP is awarded only in sellAsset().
+    // Phase 5: no XP from transfers — XP is awarded ONLY on profitable sellAsset().
     return { ok: true, amount: amt };
   }
 
@@ -421,6 +193,33 @@
     bank.creditCard.used = 0;
     // Phase 5: no XP from CC approval.
     return { ok: true, limit: offer.limit };
+  }
+
+  /* ---------- Operation: Credit card limit UPGRADE (Phase 7) ----------
+     New maximum = 50% of current balance, capped at Rp 1.000.000.000.
+     Approval requires the new max to exceed the current limit. */
+  function upgradeCreditCardLimit(state, bankId) {
+    const bank = getBank(state, bankId);
+    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
+    if (!bank.creditCard.isApproved) {
+      return { ok: false, error: 'Aktifkan kartu kredit terlebih dahulu.' };
+    }
+    const newMax = Math.min(Math.floor(bank.balance * 0.5), CC_MAX_LIMIT_UPGRADE);
+    const oldLimit = bank.creditCard.limit || 0;
+    if (newMax <= oldLimit) {
+      return {
+        ok: false,
+        error: `Pengajuan ditolak. Saldo Anda di ${bank.shortName} belum cukup untuk menaikkan limit ` +
+               `(plafon baru ${JI.formatIDR(newMax)} ≤ limit saat ini ${JI.formatIDR(oldLimit)}).`,
+      };
+    }
+    bank.creditCard.limit = newMax;
+    return {
+      ok: true,
+      oldLimit,
+      newLimit: newMax,
+      delta: newMax - oldLimit,
+    };
   }
 
   /* ---------- Operation: Apply KTA loan ---------- */
@@ -450,7 +249,6 @@
     };
     bank.balance += p; // disbursement
     refreshDerived(bank);
-    recordHistory(state, bank, 'IN', p, 'Pencairan KTA');
     JI.recomputeNetWorth(state);
     // Phase 5: no XP from taking out a loan.
     return { ok: true, quote: q };
@@ -461,102 +259,8 @@
     return (state.banks || []).reduce((a, b) => a + (b.balance || 0), 0);
   }
 
-  function totalCreditCardDebt(state) {
-    return (state.banks || []).reduce((a, b) =>
-      a + (b.creditCard && b.creditCard.used ? b.creditCard.used : 0), 0);
-  }
-
-  function totalAvailableCredit(state) {
-    return (state.banks || []).reduce((a, b) => {
-      if (!b.creditCard || !b.creditCard.isApproved) return a;
-      return a + (b.creditCard.limit - b.creditCard.used);
-    }, 0);
-  }
-
   function activeLoanCount(state) {
     return (state.banks || []).filter(b => b.loan && b.loan.isActive).length;
-  }
-
-  /* =========================================================================
-     deductFromBest(state, amount, label)
-     Pay an arbitrary expense (ops cost, salary, tax, etc.) using the best
-     available source. Order:
-       1. Largest single bank balance >= amount → debit it.
-       2. Drain banks in descending balance order until covered.
-       3. Fall back to credit card with most available limit.
-       4. Otherwise mark as missed (returns ok:false with shortfall).
-     Returns: { ok, sources: [{kind, bankId, amount}], shortfall }
-     ========================================================================= */
-  function deductFromBest(state, amount, label = 'expense') {
-    let need = Math.max(0, Math.floor(Number(amount) || 0));
-    if (need === 0) return { ok: true, sources: [], shortfall: 0, label };
-
-    const sources = [];
-    // Step 1+2: drain banks
-    const banks = (state.banks || [])
-      .slice()
-      .sort((a, b) => b.balance - a.balance);
-    for (const bank of banks) {
-      if (need <= 0) break;
-      if (bank.balance <= 0) continue;
-      const take = Math.min(bank.balance, need);
-      bank.balance -= take;
-      refreshDerived(bank);
-      recordHistory(state, bank, 'OUT', take, label);
-      sources.push({ kind: 'bank', bankId: bank.id, amount: take });
-      need -= take;
-    }
-    // Step 3: fall back to credit cards (largest available limit first)
-    if (need > 0) {
-      const ccs = (state.banks || [])
-        .filter(b => b.creditCard && b.creditCard.isApproved)
-        .map(b => ({ bank: b, available: b.creditCard.limit - b.creditCard.used }))
-        .filter(x => x.available > 0)
-        .sort((a, b) => b.available - a.available);
-      for (const { bank, available } of ccs) {
-        if (need <= 0) break;
-        const take = Math.min(available, need);
-        bank.creditCard.used += take;
-        recordHistory(state, bank, 'OUT', take, label + ' (Kartu Kredit)');
-        sources.push({ kind: 'credit', bankId: bank.id, amount: take });
-        need -= take;
-      }
-    }
-    JI.recomputeNetWorth(state);
-    return {
-      ok: need === 0,
-      sources,
-      shortfall: need,
-      label,
-    };
-  }
-
-  /* =========================================================================
-     enforceMonthlyCCCharges(state)
-     Called once per month (every 30 days). Applies a 5% finance charge to
-     any outstanding credit-card balance, simulating Indonesian CC monthly
-     interest. Returns events: [{bankId, charge}].
-     ========================================================================= */
-  const CC_MONTHLY_INTEREST = 0.05;
-
-  function enforceMonthlyCCCharges(state) {
-    const events = [];
-    (state.banks || []).forEach(bank => {
-      if (!bank.creditCard || !bank.creditCard.isApproved) return;
-      const used = bank.creditCard.used || 0;
-      if (used <= 0) return;
-      const charge = Math.round(used * CC_MONTHLY_INTEREST);
-      // Cap so used never exceeds the limit; if it would, only fill to limit.
-      const newUsed = Math.min(bank.creditCard.limit, used + charge);
-      const applied = newUsed - used;
-      bank.creditCard.used = newUsed;
-      if (applied > 0) {
-        recordHistory(state, bank, 'OUT', applied, 'Bunga Kartu Kredit (5%/bln)');
-      }
-      events.push({ bankId: bank.id, charge: applied, requested: charge });
-    });
-    JI.recomputeNetWorth(state);
-    return events;
   }
 
   /* ---------- Expose ---------- */
@@ -571,29 +275,13 @@
     getBank,
     transfer,
     applyCreditCard,
+    upgradeCreditCardLimit,
     applyLoan,
     totalBankBalance,
     activeLoanCount,
-    totalCreditCardDebt,
-    totalAvailableCredit,
     LOAN_INTEREST_FLAT,
     LOAN_TERM_DAYS,
     CC_MAX_LIMIT,
-    CC_MONTHLY_INTEREST,
-    // Phase 2 additions
-    charge,
-    deposit,
-    repayCreditCard,
-    tickDailyLoans,
-    refreshBankDerived: refreshDerived,
-    // Phase 3 additions
-    deductFromBest,
-    enforceMonthlyCCCharges,
-    // Phase 4 additions
-    bankCredit,
-    bankDebit,
-    debitAcrossBanks,
-    pickRandomBankId,
-    recordHistory,
+    CC_MAX_LIMIT_UPGRADE,
   });
 })(window);

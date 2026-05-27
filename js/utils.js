@@ -61,6 +61,36 @@
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
+  function randomFloat(min, max) {
+    return Math.random() * (max - min) + min;
+  }
+
+  function shuffleArray(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function pickRandom(arr) {
+    if (!arr || arr.length === 0) return null;
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
+  function pickWeighted(items) {
+    // items: [{ value, weight }]
+    const total = items.reduce((a, b) => a + (b.weight || 0), 0);
+    if (total <= 0) return items[0]?.value;
+    let r = Math.random() * total;
+    for (const it of items) {
+      r -= it.weight || 0;
+      if (r <= 0) return it.value;
+    }
+    return items[items.length - 1].value;
+  }
+
   /**
    * Split `total` into n positive parts, each part >= minPart, with all parts distinct.
    */
@@ -152,9 +182,7 @@
     }, timeoutMs);
   }
 
-  /* ---------- Sleek floating XP toast (Phase 5) ----------
-     Used when sellAsset() yields profit. Renders a gold/emerald pill with
-     a floating animation. Driven entirely by CSS classes. */
+  /* ---------- XP floating toast (sleek gold/emerald) ---------- */
   function showXPToast(amount, opts = {}) {
     const container = document.getElementById('toast-container');
     if (!container || !amount || amount <= 0) return;
@@ -173,6 +201,54 @@
     }, 2200);
   }
 
+  /* ---------- Event modal (Indonesia-banget pop-up) ----------
+     event: { id, title, body, type: 'positive'|'negative', severity: 'major'|'minor',
+             icon, description }
+     onClose: optional callback. */
+  function showEventModal(event, onClose) {
+    if (!event) return;
+
+    // Tear down any existing modal first.
+    const existing = document.getElementById('event-modal-root');
+    if (existing) existing.remove();
+
+    const root = el('div', {
+      id: 'event-modal-root',
+      class: `event-modal-root event-${event.type || 'negative'} event-${event.severity || 'minor'}`,
+    });
+
+    const card = el('div', { class: 'event-modal-card' });
+
+    const stripe = el('div', { class: 'event-modal-stripe' },
+      (event.type === 'positive' ? 'KABAR BAIK' : 'KABAR BURUK')
+      + ' · ' + (event.severity === 'major' ? 'BLACK SWAN' : 'INSIDEN')
+    );
+    card.appendChild(stripe);
+
+    card.appendChild(el('div', { class: 'event-modal-icon' }, event.icon || (event.type === 'positive' ? '🌟' : '⚠️')));
+    card.appendChild(el('h3', { class: 'event-modal-title' }, event.title || 'Kejadian Tak Terduga'));
+    card.appendChild(el('p', { class: 'event-modal-body' }, event.body || ''));
+
+    if (event.description) {
+      card.appendChild(el('div', { class: 'event-modal-impact' }, event.description));
+    }
+
+    const closeBtn = el('button', {
+      class: 'event-modal-close',
+      onclick: () => {
+        root.classList.add('event-modal-leave');
+        setTimeout(() => {
+          root.remove();
+          if (typeof onClose === 'function') onClose();
+        }, 300);
+      },
+    }, event.type === 'positive' ? 'Lanjutkan, Pak Bos! ✨' : 'Terima Nasib Saya 😔');
+    card.appendChild(closeBtn);
+
+    root.appendChild(card);
+    document.body.appendChild(root);
+  }
+
   /* ---------- Clamp ---------- */
   function clamp(n, min, max) {
     return Math.max(min, Math.min(max, n));
@@ -186,10 +262,15 @@
     getCalendar,
     formatCalendar,
     randomInt,
+    randomFloat,
+    shuffleArray,
+    pickRandom,
+    pickWeighted,
     splitUnequal,
     $, $$, el,
     toast,
     showXPToast,
+    showEventModal,
     clamp,
   });
 })(window);

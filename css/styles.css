@@ -267,485 +267,13 @@ input[type=number]::-webkit-inner-spin-button {
 input[type=number] { -moz-appearance: textfield; }
 
 
-
 /* ==========================================================================
-   Phase 2 — Market, News, Physical Assets
+   PHASE 5 — XP toast, news cards, event modal
    ========================================================================== */
 
-/* ---------- Next Day button (highlight) ---------- */
-#next-day-btn {
-  background: linear-gradient(135deg, #34d399, #10b981);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #052e2b;
-  font-weight: 700;
-  box-shadow: 0 4px 14px -4px rgba(16, 185, 129, 0.55);
-}
-#next-day-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: #ffffff;
-}
-
-/* ---------- Market table ---------- */
-.tab-panel table {
-  border-collapse: separate;
-  border-spacing: 0;
-}
-.tab-panel thead th:first-child { border-top-left-radius: 0.75rem; }
-.tab-panel thead th:last-child  { border-top-right-radius: 0.75rem; }
-.tab-panel tbody tr:last-child td { border-bottom: 0; }
-.tab-panel tbody tr:hover         { background: #f8fafc; }
-
-/* Sticky header on long tables */
-.tab-panel .ji-card thead th {
-  position: sticky;
-  top: 0;
-  background: #f1f5f9;
-  z-index: 1;
-}
-
-/* Trend arrows */
-.trend-up   { color: #059669; }
-.trend-down { color: #e11d48; }
-.trend-flat { color: #64748b; }
-
-/* ---------- News cards ---------- */
-.tab-panel section,
-.tab-panel article {
-  word-break: break-word;
-}
-
-/* Subtle pulse for "today" news block to draw attention */
-@keyframes newsPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
-  50%      { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.06); }
-}
-.news-today { animation: newsPulse 2.4s ease-in-out infinite; }
-
-/* ---------- Asset cards (Aset Fisik) ---------- */
-.asset-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 1rem;
-  padding: 1rem;
-  transition: box-shadow 0.18s, transform 0.05s;
-}
-.asset-card:hover {
-  box-shadow: 0 12px 28px -16px rgba(15, 23, 42, 0.25);
-}
-.asset-card:active { transform: translateY(1px); }
-
-.asset-emoji {
-  font-size: 2.5rem;
-  line-height: 1;
-  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
-}
-
-.brand-block {
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  border-radius: 1rem;
-  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
-}
-
-/* Electric vehicle accent stripe */
-.ev-accent {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(34, 211, 238, 0.06));
-}
-
-/* ---------- Modal polish ---------- */
-#ji-modal {
-  animation: modalIn 0.18s ease-out;
-}
-@keyframes modalIn {
-  from { background: rgba(0,0,0,0); }
-  to   { background: rgba(0,0,0,0.6); }
-}
-#ji-modal > div {
-  animation: cardIn 0.22s ease-out;
-}
-@keyframes cardIn {
-  from { transform: translateY(20px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
-}
-
-/* ---------- Mobile-first overrides ---------- */
-@media (max-width: 640px) {
-  .ji-card { border-radius: 0.85rem; }
-  .desktop-tab { display: none; }
-  /* Slightly tighter padding for stat cards on phones */
-  .ji-card.p-5 { padding: 1rem; }
-  /* Stack header date+button cleanly */
-  #next-day-btn {
-    padding: 0.45rem 0.75rem;
-    font-size: 0.75rem;
-  }
-}
-
-/* Compact spacing for market table on small/medium */
-@media (max-width: 1023px) {
-  .tab-panel table th,
-  .tab-panel table td { padding: 0.6rem 0.75rem; }
-}
-
-/* ---------- Buy/Sell action buttons inside tables ---------- */
-.row-action {
-  padding: 0.35rem 0.75rem !important;
-  font-size: 0.72rem !important;
-  border-radius: 0.45rem !important;
-}
-
-/* ---------- News mood badges ---------- */
-.mood-bullish { color: #059669; }
-.mood-bearish { color: #e11d48; }
-.mood-neutral { color: #64748b; }
-
-/* ---------- Sparkline placeholder (Phase 3) ---------- */
-.sparkline {
-  height: 28px;
-  width: 80px;
-  background: linear-gradient(90deg, transparent, rgba(15,23,42,0.05));
-  border-radius: 4px;
-}
-
-
-
-/* ==========================================================================
-   Phase 3 — Game loop, level-up, HRD, CoreTax, single-file polish
-   ========================================================================== */
-
-/* ---------- Day-loop loading overlay ---------- */
-#day-loading-overlay {
-  animation: dayOverlayIn 0.18s ease-out;
-}
-@keyframes dayOverlayIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-.loading-spinner {
-  width: 64px; height: 64px;
-  border: 4px solid rgba(255,255,255,0.08);
-  border-top-color: #34d399;
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ---------- Tier pill on Home hero ---------- */
-.tier-pill {
-  background: linear-gradient(135deg, rgba(52, 211, 153, 0.18), rgba(20, 184, 166, 0.10));
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  color: #ecfdf5;
-  padding: 0.5rem 0.85rem;
-  border-radius: 999px;
-  backdrop-filter: blur(6px);
-}
-
-/* ---------- Level-up modal ---------- */
-.levelup-card {
-  background: linear-gradient(135deg, #0b1220 0%, #14532d 50%, #0b1220 100%);
-  border: 2px solid rgba(52, 211, 153, 0.45);
-  position: relative;
-  overflow: hidden;
-}
-.levelup-card::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: radial-gradient(circle at 50% 0%, rgba(52, 211, 153, 0.30), transparent 60%);
-  pointer-events: none;
-}
-.levelup-burst {
-  display: inline-block;
-  animation: burst 1.6s ease-out infinite;
-  filter: drop-shadow(0 6px 14px rgba(52, 211, 153, 0.55));
-}
-@keyframes burst {
-  0%, 100% { transform: scale(1) rotate(0deg); }
-  35%      { transform: scale(1.2) rotate(-6deg); }
-  70%      { transform: scale(0.95) rotate(4deg); }
-}
-
-/* ---------- HRD role / tier cards ---------- */
-.hrd-tier-active {
-  border-color: #34d399 !important;
-  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.12);
-}
-
-/* ---------- CoreTax overdue rows ---------- */
-.tax-overdue {
-  background: linear-gradient(135deg, #fff7ed, #fef2f2);
-  border-color: #fdba74;
-}
-.tax-penalty-active {
-  background: linear-gradient(135deg, #fee2e2, #fecaca);
-  border-color: #fca5a5;
-}
-
-/* ---------- Reset Game button — emphasized warning style ---------- */
-.ji-btn.danger {
-  background: #e11d48;
-  color: #fff;
-}
-.ji-btn.danger:hover:not(:disabled) {
-  background: #be123c;
-}
-
-/* ---------- Prediction badge on Market tickers ---------- */
-.predict-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  padding: 0.15rem 0.4rem;
-  font-size: 0.62rem;
-  font-weight: 700;
-  border-radius: 0.35rem;
-  margin-left: 0.4rem;
-}
-.predict-up   { background: rgba(16, 185, 129, 0.12); color: #047857; }
-.predict-down { background: rgba(244, 63, 94, 0.12);  color: #be123c; }
-
-/* ---------- Mobile tweaks ---------- */
-@media (max-width: 640px) {
-  .levelup-card { padding: 1.5rem; }
-  #day-loading-overlay .loading-spinner {
-    width: 52px; height: 52px;
-  }
-  .tier-pill { font-size: 0.75rem; padding: 0.4rem 0.65rem; }
-}
-
-
-
-/* =========================================================================
-   PHASE 4 — IPO badge, Mutasi Rekening, VC outcomes, Black Swan modal
-   ========================================================================= */
-
-/* ---------- IPO badge ---------- */
-.ipo-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.85rem;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #fde047, #f59e0b);
-  color: #422006;
-  box-shadow: 0 6px 18px -8px rgba(217,119,6,0.6);
-}
-
-.ipo-card {
-  background:
-    radial-gradient(circle at 100% 0%, rgba(16,185,129,0.08), transparent 50%),
-    #ffffff;
-  border: 1px solid rgba(16,185,129,0.18);
-}
-
-/* ---------- Mutasi Rekening (bank history) ---------- */
-.mutasi-list {
-  max-height: 280px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.6rem;
-  background: #fff;
-}
-.mutasi-list::-webkit-scrollbar { width: 6px; }
-.mutasi-list::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.18); border-radius: 999px; }
-
-.mutasi-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #f1f5f9;
-}
-.mutasi-row:last-child { border-bottom: none; }
-.mutasi-row.in  { background: linear-gradient(90deg, rgba(16,185,129,0.06), transparent); }
-.mutasi-row.out { background: linear-gradient(90deg, rgba(239,68,68,0.06), transparent); }
-
-.mutasi-row-main {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex: 1;
-  min-width: 0;
-}
-.mutasi-type {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  width: 2.4rem;
-  height: 1.4rem;
-  border-radius: 999px;
-}
-.mutasi-row.in  .mutasi-type { background: #d1fae5; color: #047857; }
-.mutasi-row.out .mutasi-type { background: #fee2e2; color: #b91c1c; }
-
-.mutasi-desc { min-width: 0; }
-.mutasi-desc p:first-child {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mutasi-amount {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-weight: 700;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-.mutasi-row.in  .mutasi-amount { color: #047857; }
-.mutasi-row.out .mutasi-amount { color: #b91c1c; }
-
-/* ---------- VC ---------- */
-.vc-card {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(139,92,246,0.06), transparent 50%),
-    #ffffff;
-  border: 1px solid rgba(139,92,246,0.15);
-}
-
-.vc-history-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.7rem 0.85rem;
-  border-radius: 0.6rem;
-  border: 1px solid #e2e8f0;
-}
-.vc-out-bad  { background: linear-gradient(90deg, rgba(239,68,68,0.06), #fff);
-               border-color: rgba(239,68,68,0.25); color: #7f1d1d; }
-.vc-out-good { background: linear-gradient(90deg, rgba(16,185,129,0.08), #fff);
-               border-color: rgba(16,185,129,0.30); color: #064e3b; }
-.vc-out-best { background: linear-gradient(90deg, rgba(217,70,239,0.10),
-                                                 rgba(99,102,241,0.10), #fff);
-               border-color: rgba(168,85,247,0.40); color: #4a044e; }
-
-/* ---------- Black Swan / IPO dramatic overlay ---------- */
-.blackswan-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9998;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(2, 6, 23, 0.92);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  animation: bsFadeIn 0.35s ease-out;
-  padding: 1.25rem;
-}
-
-.blackswan-overlay.severity-red    { background: radial-gradient(circle at 50% 50%, rgba(127,29,29,0.85), rgba(2,6,23,0.96)); }
-.blackswan-overlay.severity-amber  { background: radial-gradient(circle at 50% 50%, rgba(120,53,15,0.85), rgba(2,6,23,0.96)); }
-.blackswan-overlay.severity-green  { background: radial-gradient(circle at 50% 50%, rgba(6,78,59,0.85),  rgba(2,6,23,0.96)); }
-
-@keyframes bsFadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes bsZoom   {
-  from { opacity: 0; transform: scale(0.85); }
-  to   { opacity: 1; transform: scale(1); }
-}
-@keyframes bsShake  {
-  0%   { transform: translateX(0); }
-  20%  { transform: translateX(-6px); }
-  40%  { transform: translateX(6px); }
-  60%  { transform: translateX(-4px); }
-  80%  { transform: translateX(4px); }
-  100% { transform: translateX(0); }
-}
-
-.blackswan-dramatic {
-  max-width: 540px;
-  width: 100%;
-  text-align: center;
-  color: #f8fafc;
-  padding: 2rem 1.75rem;
-  border-radius: 1.25rem;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(15, 23, 42, 0.65);
-  box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7);
-  animation: bsZoom 0.4s ease-out, bsShake 0.6s ease-in-out 0.4s;
-}
-
-.blackswan-icon {
-  font-size: 4rem;
-  line-height: 1;
-  margin-bottom: 0.6rem;
-  filter: drop-shadow(0 6px 16px rgba(255,255,255,0.15));
-}
-.blackswan-tag {
-  font-size: 0.7rem;
-  letter-spacing: 0.45em;
-  text-transform: uppercase;
-  color: #cbd5e1;
-  margin-bottom: 0.6rem;
-}
-.blackswan-title {
-  font-size: 1.6rem;
-  letter-spacing: 0.05em;
-  font-weight: 900;
-  text-transform: uppercase;
-  margin-bottom: 0.75rem;
-  color: #fff;
-}
-.severity-red    .blackswan-title { color: #fecaca; text-shadow: 0 0 30px rgba(239,68,68,0.4); }
-.severity-amber  .blackswan-title { color: #fcd34d; text-shadow: 0 0 30px rgba(245,158,11,0.4); }
-.severity-green  .blackswan-title { color: #6ee7b7; text-shadow: 0 0 30px rgba(16,185,129,0.4); }
-
-.blackswan-headline {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin-bottom: 0.6rem;
-  color: #e2e8f0;
-}
-.blackswan-body {
-  font-size: 0.92rem;
-  color: #cbd5e1;
-  line-height: 1.55;
-  margin-bottom: 1rem;
-}
-.blackswan-date {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.72rem;
-  color: #94a3b8;
-  margin-bottom: 1.25rem;
-  letter-spacing: 0.08em;
-}
-
-.blackswan-dismiss {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.7rem 1.4rem;
-  font-weight: 700;
-  border-radius: 999px;
-  background: #f8fafc;
-  color: #0f172a;
-  cursor: pointer;
-  transition: filter 0.15s, transform 0.05s;
-  border: none;
-  font-size: 0.85rem;
-}
-.blackswan-dismiss:hover  { filter: brightness(0.96); }
-.blackswan-dismiss:active { transform: translateY(1px); }
-
-@media (min-width: 768px) {
-  .blackswan-icon  { font-size: 5rem; }
-  .blackswan-title { font-size: 2rem; }
-}
-
-
-
-/* ==========================================================================
-   Phase 5 — Sleek floating XP toast
-   Triggered on profitable sellAsset() via JI.showXPToast().
-   ========================================================================== */
+/* ---------- Sleek floating XP toast ---------- */
 .xp-toast {
+  position: relative;
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
@@ -808,4 +336,424 @@ input[type=number] { -moz-appearance: textfield; }
 @keyframes xpSpark {
   0%, 100% { transform: rotate(0deg)   scale(1); }
   50%      { transform: rotate(180deg) scale(1.25); }
+}
+
+/* ---------- News cards ---------- */
+.news-bullish { border-left: 4px solid #10b981; }
+.news-bearish { border-left: 4px solid #ef4444; }
+
+.news-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.news-badge.bullish {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.news-badge.bearish {
+  background: rgba(239, 68, 68, 0.10);
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* ---------- Event log row tinting ---------- */
+.event-row-positive {
+  border-left: 4px solid #f59e0b;
+  background: linear-gradient(90deg, rgba(253, 224, 71, 0.10), transparent 70%);
+}
+.event-row-negative {
+  border-left: 4px solid #dc2626;
+  background: linear-gradient(90deg, rgba(220, 38, 38, 0.08), transparent 70%);
+}
+
+/* ==========================================================================
+   EVENT MODAL — distinct themes per type/severity
+   ========================================================================== */
+.event-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(6px);
+  animation: emFadeIn 0.25s ease-out;
+}
+.event-modal-root.event-modal-leave {
+  animation: emFadeOut 0.3s ease-in forwards;
+}
+
+.event-modal-card {
+  width: min(440px, 100%);
+  border-radius: 1.25rem;
+  padding: 2rem 1.75rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+  color: #fff;
+  animation: emCardIn 0.45s cubic-bezier(0.2, 0.85, 0.2, 1.05) both;
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.55);
+}
+
+/* === NEGATIVE: terrifying red === */
+.event-negative .event-modal-card {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(239, 68, 68, 0.55), transparent 60%),
+    linear-gradient(160deg, #7f1d1d 0%, #450a0a 60%, #1f0606 100%);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+.event-negative .event-modal-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    45deg, transparent 0 14px, rgba(239,68,68,0.05) 14px 28px);
+  pointer-events: none;
+}
+.event-negative.event-major .event-modal-card {
+  animation:
+    emCardIn 0.45s cubic-bezier(0.2, 0.85, 0.2, 1.05) both,
+    emShake 0.55s ease-in-out 0.45s 1;
+}
+
+/* === POSITIVE: shiny gold/green === */
+.event-positive .event-modal-card {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(253, 224, 71, 0.55), transparent 60%),
+    linear-gradient(160deg, #064e3b 0%, #022c22 70%, #052e16 100%);
+  border: 1px solid rgba(253, 224, 71, 0.55);
+}
+.event-positive .event-modal-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 80% 110%, rgba(253, 224, 71, 0.2), transparent 60%);
+  pointer-events: none;
+}
+.event-positive.event-major .event-modal-card {
+  box-shadow:
+    0 0 0 1px rgba(253, 224, 71, 0.4) inset,
+    0 0 60px rgba(253, 224, 71, 0.35),
+    0 30px 60px -20px rgba(0, 0, 0, 0.6);
+}
+
+/* Stripe (top tag) */
+.event-modal-stripe {
+  position: relative;
+  display: inline-block;
+  margin: 0 auto 0.75rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  padding: 4px 14px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.event-negative .event-modal-stripe {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fecaca;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+.event-positive .event-modal-stripe {
+  background: rgba(253, 224, 71, 0.18);
+  color: #fef9c3;
+  border: 1px solid rgba(253, 224, 71, 0.55);
+}
+
+.event-modal-icon {
+  position: relative;
+  font-size: 3.5rem;
+  line-height: 1;
+  margin-bottom: 0.75rem;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+}
+.event-positive .event-modal-icon {
+  animation: emGlow 1.6s ease-in-out infinite alternate;
+}
+.event-modal-title {
+  position: relative;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.5rem;
+  text-wrap: balance;
+}
+.event-positive .event-modal-title {
+  background: linear-gradient(90deg, #fde68a, #facc15, #34d399);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.event-negative .event-modal-title {
+  color: #fecaca;
+  text-shadow: 0 1px 12px rgba(239, 68, 68, 0.4);
+}
+
+.event-modal-body {
+  position: relative;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.85);
+  margin-bottom: 1rem;
+}
+.event-modal-impact {
+  position: relative;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+.event-negative .event-modal-impact {
+  background: rgba(0, 0, 0, 0.3);
+  color: #fecaca;
+  border: 1px dashed rgba(239, 68, 68, 0.5);
+}
+.event-positive .event-modal-impact {
+  background: rgba(0, 0, 0, 0.25);
+  color: #fde68a;
+  border: 1px dashed rgba(253, 224, 71, 0.5);
+}
+
+.event-modal-close {
+  position: relative;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 0.7rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.05s, filter 0.15s;
+}
+.event-modal-close:active { transform: translateY(1px); }
+.event-negative .event-modal-close {
+  background: linear-gradient(180deg, #ef4444, #b91c1c);
+  color: #fff;
+  box-shadow: 0 8px 20px -8px rgba(239, 68, 68, 0.7);
+}
+.event-positive .event-modal-close {
+  background: linear-gradient(180deg, #facc15, #eab308);
+  color: #422006;
+  box-shadow: 0 8px 20px -8px rgba(253, 224, 71, 0.6);
+}
+.event-modal-close:hover { filter: brightness(1.05); }
+
+/* Animations */
+@keyframes emFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes emFadeOut {
+  to { opacity: 0; }
+}
+@keyframes emCardIn {
+  0%   { opacity: 0; transform: translateY(12px) scale(0.92); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes emShake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-8px); }
+  40%      { transform: translateX(8px); }
+  60%      { transform: translateX(-5px); }
+  80%      { transform: translateX(5px); }
+}
+@keyframes emGlow {
+  from { filter: drop-shadow(0 0 6px rgba(253, 224, 71, 0.4)); }
+  to   { filter: drop-shadow(0 0 18px rgba(253, 224, 71, 0.8)); }
+}
+
+
+
+/* ==========================================================================
+   PHASE 7 — Main Menu, Venture Builder, e-IPO
+   ========================================================================== */
+
+/* ---------- Main Menu (character creation) ---------- */
+#main-menu { animation: fadeIn 0.4s ease-out; }
+
+.main-menu-card {
+  background:
+    radial-gradient(circle at 12% 10%, rgba(52, 211, 153, 0.18), transparent 55%),
+    radial-gradient(circle at 90% 110%, rgba(99, 102, 241, 0.18), transparent 55%),
+    linear-gradient(160deg, #0b1220 0%, #070b14 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.mm-glow {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(60px);
+  pointer-events: none;
+  opacity: 0.5;
+}
+.mm-glow-1 {
+  width: 220px; height: 220px;
+  top: -60px; left: -60px;
+  background: rgba(52, 211, 153, 0.35);
+}
+.mm-glow-2 {
+  width: 240px; height: 240px;
+  bottom: -80px; right: -80px;
+  background: rgba(99, 102, 241, 0.30);
+}
+
+.mm-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 0.4rem;
+}
+.mm-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  border-radius: 0.7rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.mm-input::placeholder { color: rgba(148, 163, 184, 0.55); }
+.mm-input:focus {
+  border-color: #34d399;
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mm-segments { display: flex; gap: 0.6rem; }
+.mm-seg {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.5rem;
+  font-weight: 600;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mm-seg:hover { background: rgba(255, 255, 255, 0.07); }
+.mm-seg.is-active {
+  background: linear-gradient(135deg, #34d399, #14b8a6);
+  color: #052e16;
+  border-color: #34d399;
+  box-shadow: 0 6px 18px -8px rgba(52, 211, 153, 0.6);
+}
+
+.mm-chip {
+  font-size: 0.7rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mm-chip:hover {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+
+.mm-btn-start {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  border-radius: 0.8rem;
+  background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+  color: #052e16;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.05s;
+  box-shadow: 0 12px 30px -10px rgba(52, 211, 153, 0.5);
+}
+.mm-btn-start:hover  { filter: brightness(1.05); }
+.mm-btn-start:active { transform: translateY(1px); }
+
+
+/* ---------- Venture Builder ---------- */
+.venture-sector {
+  border-radius: 0.7rem;
+  padding: 0.85rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.venture-sector:hover { border-color: #14b8a6; background: #f0fdfa; }
+.venture-sector.is-active {
+  border-color: #14b8a6;
+  background: linear-gradient(135deg, #14b8a6, #0f766e);
+  color: #fff;
+  box-shadow: 0 6px 18px -8px rgba(20, 184, 166, 0.45);
+}
+
+.venture-stage {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.8rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+
+/* ---------- e-IPO tiles & hype badges ---------- */
+.ipo-tile {
+  background: #fff;
+  border-radius: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 20px -8px rgba(15, 23, 42, 0.12);
+  padding: 1rem;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.ipo-tile:hover { box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.18); }
+.ipo-tile.is-ordered {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: linear-gradient(180deg, #fffbeb 0%, #fff 50%);
+}
+
+.hype-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 10px;
+  border-radius: 9999px;
+}
+.hype-high {
+  background: linear-gradient(135deg, #f97316, #dc2626);
+  color: #fff;
+  box-shadow: 0 4px 12px -4px rgba(220, 38, 38, 0.5);
+}
+.hype-medium {
+  background: linear-gradient(135deg, #facc15, #f59e0b);
+  color: #422006;
+}
+.hype-low {
+  background: rgba(148, 163, 184, 0.18);
+  color: #475569;
+  border: 1px solid rgba(148, 163, 184, 0.4);
 }

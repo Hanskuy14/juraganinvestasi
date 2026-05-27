@@ -1,7 +1,13 @@
 /* =========================================================================
-   news.js — Indonesian-context news engine.
-   Each headline declares "targets" that resolve to multipliers/impact
-   feeding the market price algorithm.
+   news.js — Phase 5 asset-specific news engine.
+
+   Each Next Day, 2 to 4 random assets get a headline drawn from a
+   category-specific template pool. Sentiment (bullish | bearish) is rolled
+   per asset; that sentiment drives an instant price impact in market.js
+   (calculateNextDayPrices already reads news[ticker].sentiment).
+
+   At least 10 bullish + 10 bearish templates per category, exactly as
+   required by Phase 5. [ASSET_NAME] is the placeholder.
    ========================================================================= */
 
 (function (global) {
@@ -9,301 +15,12 @@
 
   const JI = global.JI || (global.JI = {});
 
-  /* ---------- Headline pool ---------- */
-  /* targets: array of { scope: 'cat:<key>'|'asset:<ticker>'|'cat:all',
-                         impact: -1..+1 (capped strength) }
-     mood: 'bullish' | 'bearish' | 'neutral'
-     icon: small emoji for the news card
-  */
-  const NEWS_POOL = [
-    /* === Macro / Monetary === */
-    { id: 'bi-rate-cut',
-      mood: 'bullish', icon: '🏛',
-      headline: 'Bank Indonesia Pangkas BI Rate 25 bps',
-      body: 'BI menurunkan suku bunga acuan, mendorong likuiditas ke pasar saham domestik dan reksadana berbasis ekuitas.',
-      targets: [
-        { scope: 'cat:saham',     impact: 0.55 },
-        { scope: 'cat:reksadana', impact: 0.65 },
-      ]},
-    { id: 'bi-rate-hike',
-      mood: 'bearish', icon: '🏛',
-      headline: 'Bank Indonesia Naikkan BI Rate 25 bps',
-      body: 'Untuk meredam inflasi dan menjaga Rupiah, BI menaikkan suku bunga acuan.',
-      targets: [
-        { scope: 'cat:saham',     impact: -0.45 },
-        { scope: 'cat:reksadana', impact: -0.35 },
-      ]},
-    { id: 'rupiah-strong',
-      mood: 'bullish', icon: '💵',
-      headline: 'Rupiah Menguat Tajam Terhadap Dolar AS',
-      body: 'Rupiah ditutup menguat 1,2% setelah surplus neraca dagang melebihi ekspektasi pasar.',
-      targets: [
-        { scope: 'cat:saham',     impact: 0.30 },
-        { scope: 'asset:UNVR',    impact: 0.40 },
-        { scope: 'asset:ICBP',    impact: 0.40 },
-      ]},
-    { id: 'rupiah-weak',
-      mood: 'bearish', icon: '📉',
-      headline: 'Rupiah Tertekan, Tembus Rp 16.000/USD',
-      body: 'Tekanan capital outflow dari pasar negara berkembang membuat Rupiah melemah.',
-      targets: [
-        { scope: 'cat:saham',     impact: -0.40 },
-        { scope: 'cat:reksadana', impact: -0.25 },
-      ]},
-    { id: 'inflation-surprise',
-      mood: 'bearish', icon: '📊',
-      headline: 'Inflasi Februari di Atas Ekspektasi',
-      body: 'BPS merilis data inflasi 0,8% mom, lebih tinggi dari konsensus 0,5% mom.',
-      targets: [
-        { scope: 'cat:saham',     impact: -0.30 },
-      ]},
-
-    /* === Sectoral: Perbankan === */
-    { id: 'banking-loan-growth',
-      mood: 'bullish', icon: '🏦',
-      headline: 'Pertumbuhan Kredit Perbankan Capai Dua Digit',
-      body: 'OJK melaporkan kredit perbankan tumbuh 12,4% YoY, di atas target tahunan.',
-      targets: [
-        { scope: 'asset:BBCA', impact: 0.55 },
-        { scope: 'asset:BBRI', impact: 0.55 },
-        { scope: 'asset:BMRI', impact: 0.55 },
-        { scope: 'asset:BBNI', impact: 0.50 },
-      ]},
-    { id: 'banking-npl',
-      mood: 'bearish', icon: '⚠️',
-      headline: 'NPL Perbankan Menanjak ke Level Tertinggi',
-      body: 'Rasio kredit bermasalah industri perbankan naik di tengah perlambatan UMKM.',
-      targets: [
-        { scope: 'asset:BBRI', impact: -0.45 },
-        { scope: 'asset:BBNI', impact: -0.40 },
-        { scope: 'asset:BMRI', impact: -0.35 },
-      ]},
-
-    /* === Sectoral: Komoditas / Pertambangan / Energi === */
-    { id: 'gold-rally',
-      mood: 'bullish', icon: '🪙',
-      headline: 'Harga Emas Dunia Tembus Rekor Baru',
-      body: 'Permintaan safe-haven mendorong harga emas Comex melonjak.',
-      targets: [
-        { scope: 'asset:ANTM', impact: 0.70 },
-        { scope: 'asset:MDKA', impact: 0.55 },
-      ]},
-    { id: 'coal-rally',
-      mood: 'bullish', icon: '⛏',
-      headline: 'Harga Batu Bara Acuan Newcastle Naik 8%',
-      body: 'Permintaan musim dingin di Asia Timur kembali mendorong harga batu bara.',
-      targets: [
-        { scope: 'asset:PTBA', impact: 0.60 },
-        { scope: 'asset:BUMI', impact: 0.65 },
-      ]},
-    { id: 'oil-spike',
-      mood: 'bullish', icon: '🛢',
-      headline: 'OPEC+ Pangkas Produksi, Harga Minyak Melonjak',
-      body: 'Brent menguat 5% setelah keputusan OPEC+ memangkas produksi 1 juta bph.',
-      targets: [
-        { scope: 'asset:PGAS', impact: 0.55 },
-        { scope: 'asset:PTBA', impact: 0.30 },
-      ]},
-    { id: 'commodity-crash',
-      mood: 'bearish', icon: '📉',
-      headline: 'Harga Komoditas Global Terkoreksi Tajam',
-      body: 'Kekhawatiran resesi global menekan harga minyak, batu bara, dan logam dasar.',
-      targets: [
-        { scope: 'asset:BUMI', impact: -0.55 },
-        { scope: 'asset:PTBA', impact: -0.50 },
-        { scope: 'asset:ANTM', impact: -0.40 },
-        { scope: 'asset:MDKA', impact: -0.40 },
-      ]},
-
-    /* === Sectoral: Konsumer / Telco / Otomotif / Farmasi === */
-    { id: 'lebaran-spending',
-      mood: 'bullish', icon: '🛒',
-      headline: 'Belanja Lebaran Tembus Rekor Tertinggi',
-      body: 'Konsumsi rumah tangga melonjak menjelang Lebaran, terutama produk FMCG.',
-      targets: [
-        { scope: 'asset:UNVR', impact: 0.50 },
-        { scope: 'asset:ICBP', impact: 0.55 },
-      ]},
-    { id: 'mudik-data',
-      mood: 'bullish', icon: '📡',
-      headline: 'Trafik Data Selama Mudik Tumbuh 30%',
-      body: 'Operator telekomunikasi mencatat kenaikan trafik data signifikan.',
-      targets: [
-        { scope: 'asset:TLKM', impact: 0.55 },
-      ]},
-    { id: 'auto-incentive',
-      mood: 'bullish', icon: '🚗',
-      headline: 'Insentif PPN Mobil Listrik Diperpanjang',
-      body: 'Pemerintah memperpanjang insentif PPN DTP untuk mobil listrik dan hybrid.',
-      targets: [
-        { scope: 'asset:ASII', impact: 0.50 },
-      ]},
-    { id: 'pharma-tender',
-      mood: 'bullish', icon: '💊',
-      headline: 'Kalbe Menangkan Tender BPJS Senilai Triliunan',
-      body: 'Kalbe Farma memenangkan tender besar pengadaan obat BPJS Kesehatan.',
-      targets: [
-        { scope: 'asset:KLBF', impact: 0.65 },
-      ]},
-    { id: 'goto-monetize',
-      mood: 'bullish', icon: '📱',
-      headline: 'GoTo Umumkan Profitabilitas EBITDA Lebih Cepat',
-      body: 'Manajemen GoTo memajukan target EBITDA positif, sentimen pasar membaik.',
-      targets: [
-        { scope: 'asset:GOTO', impact: 0.70 },
-      ]},
-    { id: 'goto-down',
-      mood: 'bearish', icon: '📱',
-      headline: 'GoTo Catat Rugi Kuartalan Lebih Besar',
-      body: 'Beban kompensasi karyawan dan promosi menekan kinerja GoTo.',
-      targets: [
-        { scope: 'asset:GOTO', impact: -0.60 },
-      ]},
-
-    /* === Crypto-specific === */
-    { id: 'btc-etf',
-      mood: 'bullish', icon: '🚀',
-      headline: 'Inflow ETF Bitcoin Spot Tembus USD 1 Miliar Sepekan',
-      body: 'Adopsi institusional terhadap Bitcoin spot ETF mencatatkan rekor inflow.',
-      targets: [
-        { scope: 'asset:BTC',  impact: 0.65 },
-        { scope: 'asset:ETH',  impact: 0.45 },
-        { scope: 'cat:crypto', impact: 0.30 },
-      ]},
-    { id: 'crypto-regulation',
-      mood: 'bearish', icon: '⚖️',
-      headline: 'Regulator Asia Perketat Aturan Bursa Kripto',
-      body: 'Beberapa regulator Asia merilis aturan baru terkait listing dan custody.',
-      targets: [
-        { scope: 'cat:crypto', impact: -0.55 },
-      ]},
-    { id: 'eth-upgrade',
-      mood: 'bullish', icon: '🛠',
-      headline: 'Upgrade Jaringan Ethereum Sukses Diaktifkan',
-      body: 'Hard fork berjalan lancar; biaya gas turun signifikan.',
-      targets: [
-        { scope: 'asset:ETH',  impact: 0.60 },
-        { scope: 'asset:MATIC', impact: 0.35 },
-      ]},
-    { id: 'sol-outage',
-      mood: 'bearish', icon: '🛑',
-      headline: 'Jaringan Solana Sempat Down Selama 4 Jam',
-      body: 'Validator melaporkan congestion, transaksi sempat tidak terkonfirmasi.',
-      targets: [
-        { scope: 'asset:SOL', impact: -0.60 },
-      ]},
-    { id: 'doge-hype',
-      mood: 'bullish', icon: '🐕',
-      headline: 'Tweet Selebriti Picu Lonjakan Volume Dogecoin',
-      body: 'Sentimen ritel kembali memanas di forum kripto Indonesia.',
-      targets: [
-        { scope: 'asset:DOGE', impact: 0.75 },
-      ]},
-    { id: 'idrc-listed',
-      mood: 'bullish', icon: '🇮🇩',
-      headline: 'Bappebti Resmi Daftarkan IDRCoin di Pasar Aset Kripto',
-      body: 'IDRC menjadi salah satu aset kripto lokal yang resmi terdaftar.',
-      targets: [
-        { scope: 'asset:IDRC', impact: 0.70 },
-        { scope: 'asset:KNT',  impact: 0.45 },
-        { scope: 'asset:IDT',  impact: 0.40 },
-      ]},
-    { id: 'majapahit-hype',
-      mood: 'bullish', icon: '🏯',
-      headline: 'MajapahitCoin Kolaborasi dengan UMKM Lokal',
-      body: 'Komunitas MJP meluncurkan program reward UMKM Nusantara.',
-      targets: [
-        { scope: 'asset:MJP', impact: 0.80 },
-      ]},
-
-    /* === Reksadana / Pasar Modal === */
-    { id: 'reksadana-aum',
-      mood: 'bullish', icon: '💹',
-      headline: 'AUM Reksadana Saham Tumbuh 9% YtD',
-      body: 'Manajer investasi melaporkan kenaikan dana kelolaan di reksadana saham.',
-      targets: [
-        { scope: 'cat:reksadana', impact: 0.55 },
-      ]},
-    { id: 'reksadana-redeem',
-      mood: 'bearish', icon: '💸',
-      headline: 'Redemption Reksadana Saham Membesar',
-      body: 'Investor ritel mengalihkan dana ke pasar uang menjelang RDG The Fed.',
-      targets: [
-        { scope: 'cat:reksadana', impact: -0.50 },
-      ]},
-
-    /* === Politik / Kebijakan === */
-    { id: 'apbn-stimulus',
-      mood: 'bullish', icon: '🇮🇩',
-      headline: 'APBN Disetujui dengan Tambahan Stimulus Infrastruktur',
-      body: 'DPR setujui RAPBN dengan alokasi stimulus untuk konstruksi & energi.',
-      targets: [
-        { scope: 'cat:saham', impact: 0.40 },
-      ]},
-    { id: 'tax-amnesty',
-      mood: 'bullish', icon: '🧾',
-      headline: 'Pemerintah Wacanakan Tax Amnesty Jilid III',
-      body: 'Wacana tax amnesty memicu optimisme pasar saham.',
-      targets: [
-        { scope: 'cat:saham', impact: 0.30 },
-      ]},
-
-    /* === Geopolitical / Risk-off === */
-    { id: 'global-risk-off',
-      mood: 'bearish', icon: '🌍',
-      headline: 'Eskalasi Geopolitik Global Picu Risk-Off',
-      body: 'Investor global mengurangi eksposur ke aset berisiko tinggi.',
-      targets: [
-        { scope: 'cat:crypto', impact: -0.60 },
-        { scope: 'cat:saham',  impact: -0.30 },
-      ]},
-    { id: 'fed-pivot',
-      mood: 'bullish', icon: '🦅',
-      headline: 'The Fed Sinyalkan Pivot Suku Bunga',
-      body: 'Pernyataan dovish ketua The Fed memicu rally global aset risiko.',
-      targets: [
-        { scope: 'cat:all',    impact: 0.40 },
-        { scope: 'cat:crypto', impact: 0.55 },
-      ]},
-
-    /* === Neutral filler === */
-    { id: 'market-quiet',
-      mood: 'neutral', icon: '🕊',
-      headline: 'Pasar Cenderung Mendatar Jelang Akhir Pekan',
-      body: 'Pelaku pasar wait-and-see menjelang rilis data ekonomi.',
-      targets: [],
-    },
-    { id: 'ihsg-mixed',
-      mood: 'neutral', icon: '📈',
-      headline: 'IHSG Bergerak Mixed di Tengah Sesi Perdagangan',
-      body: 'Sektor perbankan menguat, sektor energi tertekan tipis.',
-      targets: [
-        { scope: 'asset:BBCA', impact: 0.10 },
-        { scope: 'asset:PTBA', impact: -0.10 },
-      ]},
-    { id: 'analyst-rotation',
-      mood: 'neutral', icon: '🔄',
-      headline: 'Analis Rekomendasikan Rotasi ke Sektor Defensif',
-      body: 'Beberapa sekuritas menyarankan rotasi ke saham konsumer.',
-      targets: [
-        { scope: 'asset:UNVR', impact: 0.20 },
-        { scope: 'asset:KLBF', impact: 0.20 },
-      ]},
-  ];
-
   /* =========================================================================
-     PHASE 5 — Per-asset headline templates.
-     Each category (saham / crypto / reksadana) has 12 bullish + 12 bearish.
-     Headlines reference the asset's display name via [ASSET_NAME].
-     Items are emitted by generateAssetNews() and tagged with `assetSpike`
-     so that calculateNextDayPrices() can apply the explicit spike/drop
-     overriding the random-walk for that ticker:
-       - bullish stock|reksadana : +5% .. +15%
-       - bullish crypto          : +5% .. +40%
-       - bearish (any)           : -5% .. -20%
+     TEMPLATES — category-keyed, sentiment-keyed.
      ========================================================================= */
-  const ASSET_NEWS_TEMPLATES = {
-    saham: {
+  const NEWS_TEMPLATES = {
+    /* ---------- STOCKS (IDX) ---------- */
+    stock: {
       bullish: [
         'Laba [ASSET_NAME] Meroket Kuartal Ini!',
         '[ASSET_NAME] Bagikan Dividen Jumbo Triliunan Rupiah',
@@ -330,9 +47,11 @@
         'Permintaan Anjlok, Kinerja [ASSET_NAME] Terjun Bebas',
         '[ASSET_NAME] Diaudit Ulang BPK Karena Indikasi Fraud',
         'Pajak Tambahan Pemerintah Pukul Margin [ASSET_NAME]',
-        'Saham [ASSET_NAME] Auto-Reject Bawah Tiga Hari Berturut',
+        'Saham [ASSET_NAME] Dilempar Auto-Reject Bawah Tiga Hari Berturut',
       ],
     },
+
+    /* ---------- CRYPTO ---------- */
     crypto: {
       bullish: [
         'Whale Akumulasi Jutaan [ASSET_NAME] dalam Semalam',
@@ -363,7 +82,9 @@
         'Liquidation Cascade Pukul Holder Leverage [ASSET_NAME]',
       ],
     },
-    reksadana: {
+
+    /* ---------- MUTUAL FUNDS (REKSA DANA) ---------- */
+    mutual: {
       bullish: [
         'AUM (Dana Kelolaan) [ASSET_NAME] Cetak Rekor Baru',
         '[ASSET_NAME] Dinobatkan Sebagai Reksadana Terbaik Tahun Ini',
@@ -395,170 +116,63 @@
     },
   };
 
-  const ASSET_SPIKE_RANGE = {
-    saham:     { bullish: [ 0.05,  0.15], bearish: [-0.20, -0.05] },
-    crypto:    { bullish: [ 0.05,  0.40], bearish: [-0.20, -0.05] },
-    reksadana: { bullish: [ 0.05,  0.15], bearish: [-0.20, -0.05] },
-  };
-
-  /* Pick a category-appropriate headline and embed the asset name. */
-  function pickAssetHeadline(asset, sentiment) {
-    const cat = asset.category;
-    const pool = (ASSET_NEWS_TEMPLATES[cat] || {})[sentiment] || [];
-    if (!pool.length) return `${asset.name} bergerak ${sentiment}`;
-    const tmpl = pool[Math.floor(Math.random() * pool.length)];
+  /* ---------- Pick a category-appropriate template ---------- */
+  function pickHeadline(asset, sentiment) {
+    const pool = (NEWS_TEMPLATES[asset.category] || {})[sentiment] || [];
+    if (pool.length === 0) return `[${sentiment.toUpperCase()}] ${asset.name}`;
+    const tmpl = JI.pickRandom(pool);
     return tmpl.replace(/\[ASSET_NAME\]/g, asset.name);
   }
 
-  /**
-   * Generate 2..4 asset-specific news items for the day.
-   * Each item carries:
-   *   - mood: bullish|bearish (drives card color)
-   *   - assetSpike: { ticker, sentiment, range:[lo, hi] }  → market.js applies it
-   *   - targets: same shape as macro news, so HRD analyst predictions
-   *              still pick these up.
-   */
-  function generateAssetNews(state) {
-    const all = (typeof JI.allAssets === 'function') ? JI.allAssets() : [];
-    if (!all.length) return [];
+  /* ---------- Body text accompanying a headline (short, flavorful) ---------- */
+  function buildBody(asset, sentiment) {
+    const tag = asset.category === 'crypto' ? 'Pasar Kripto'
+              : asset.category === 'mutual' ? 'Reksa Dana'
+              : 'Bursa Saham';
+    const tone = sentiment === 'bullish'
+      ? 'Sentimen positif memicu lonjakan minat beli.'
+      : 'Sentimen negatif memicu aksi jual oleh investor.';
+    return `${tag} · ${asset.ticker} — ${tone}`;
+  }
 
-    // Shuffle & pick 2..4 distinct assets.
-    const pool = [...all];
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
+  /* =========================================================================
+     generateDailyNews(state)
+     - Picks 2..4 distinct assets across all 45.
+     - Rolls a sentiment per asset (50/50 by default).
+     - Returns array of { day, ticker, name, category, sentiment, headline, body }
+     - Does NOT mutate state.priceMap; market.js applies impacts.
+     ========================================================================= */
+  function generateDailyNews(state) {
+    const assets = JI.ASSETS || [];
+    if (assets.length === 0) return [];
+
     const count = JI.randomInt(2, 4);
-    const picks = pool.slice(0, count);
+    const shuffled = JI.shuffleArray(assets).slice(0, count);
 
-    const day = state.totalDays;
-    return picks.map(asset => {
+    return shuffled.map(asset => {
       const sentiment = Math.random() < 0.5 ? 'bullish' : 'bearish';
-      const range = (ASSET_SPIKE_RANGE[asset.category] || ASSET_SPIKE_RANGE.saham)[sentiment];
-      const headline = pickAssetHeadline(asset, sentiment);
-      const moodIcon = sentiment === 'bullish' ? '🚀' : '🩸';
-      // Soft target so HRD prediction & macro buildImpactMap also see it.
-      const softImpact = sentiment === 'bullish' ? 0.6 : -0.6;
-
-      /* Phase 6 — pre-roll the EXACT multiplier this headline will deliver.
-         Pinning the random pct here (instead of at apply time) means the
-         player can read today's news and KNOW tomorrow's move is locked. */
-      const [lo, hi] = range;
-      const multiplier = lo + Math.random() * (hi - lo); // signed pct
       return {
-        day,
-        sourceId: `asset-${asset.ticker}-${sentiment}`,
-        id: `${day}-${asset.ticker}-${Math.random().toString(36).slice(2, 6)}`,
-        mood: sentiment,
-        icon: moodIcon,
-        headline,
-        body: `${asset.name} (${asset.ticker}) — ${sentiment === 'bullish' ? 'sentimen positif memicu lonjakan minat beli.' : 'sentimen negatif memicu aksi jual investor.'}`,
-        targets: [{ scope: `asset:${asset.ticker}`, impact: softImpact }],
-        // Phase 6: pre-rolled multiplier (decimal, e.g. +0.123 = +12.3%).
-        // app.js advanceDay() pushes this into state.pendingNewsEffects so
-        // the price impact lands on the NEXT calculateNextDayPrices() call.
-        multiplier,
-        // Kept for backwards compat / UI labeling.
-        assetSpike: {
-          ticker: asset.ticker,
-          name: asset.name,
-          category: asset.category,
-          sentiment,
-          range,
-          multiplier,
-        },
+        day: state.totalDays,
+        ticker: asset.ticker,
+        name: asset.name,
+        category: asset.category,
+        sentiment,
+        headline: pickHeadline(asset, sentiment),
+        body: buildBody(asset, sentiment),
       };
     });
   }
 
-  /* ---------- Pick 1-3 random non-duplicate headlines ---------- */
-  function generateDailyNews(state) {
-    const day = state.totalDays;
-
-    // Phase 5: ALWAYS include 2..4 asset-specific items per day.
-    const assetPicks = generateAssetNews(state);
-
-    // Plus 1..2 macro headlines from the existing pool for ambient flavor.
-    const macroCount = JI.randomInt(1, 2);
-    const pool = [...NEWS_POOL];
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    const macroPicks = pool.slice(0, macroCount).map(n => ({
-      ...n,
-      day,
-      id: `${day}-${n.id}-${Math.random().toString(36).slice(2, 6)}`,
-      sourceId: n.id,
-    }));
-
-    // Asset-specific items first so they top the feed (more dramatic).
-    const picks = [...assetPicks, ...macroPicks];
-
-    state.dailyNews = picks;
-    state.lastNewsDay = day;
-    state.newsHistory = state.newsHistory || [];
-    state.newsHistory.unshift(...picks);
-    if (state.newsHistory.length > 200) {
-      state.newsHistory.length = 200;
-    }
-    return picks;
-  }
-
-  /**
-   * Build a ticker -> impact map from a list of news items.
-   * Multiple news on same target stack additively, then are clamped in market.js.
-   */
-  function buildImpactMap(newsItems) {
-    const map = {};
-    (newsItems || []).forEach(n => {
-      (n.targets || []).forEach(t => {
-        if (t.scope.startsWith('asset:')) {
-          const ticker = t.scope.slice('asset:'.length);
-          map[ticker] = (map[ticker] || 0) + t.impact;
-        } else if (t.scope.startsWith('cat:')) {
-          const key = t.scope; // already 'cat:saham' etc.
-          map[key] = (map[key] || 0) + t.impact;
-        }
-      });
-    });
-    return map;
-  }
-
-  /**
-   * Phase 6 — push every asset-targeted news multiplier into the queue
-   * that will be drained by the NEXT calculateNextDayPrices() call.
-   * Skips items without a numeric multiplier (e.g. macro headlines).
-   */
-  function queueNewsEffects(state, newsItems) {
-    if (!state) return [];
-    state.pendingNewsEffects = state.pendingNewsEffects || [];
-    const queued = [];
-    (newsItems || []).forEach(n => {
-      if (!n || typeof n.multiplier !== 'number' || !isFinite(n.multiplier)) return;
-      const ticker = n.assetSpike && n.assetSpike.ticker;
-      if (!ticker) return;
-      // Avoid duplicate goreng entries — those are queued by gorengSaham().
-      if (n.isGoreng) return;
-      state.pendingNewsEffects.push({
-        ticker,
-        multiplier: n.multiplier,
-        source: 'news',
-      });
-      queued.push({ ticker, multiplier: n.multiplier });
-    });
-    return queued;
+  /* ---------- Convenience: get news for a specific day ---------- */
+  function newsForDay(state, day) {
+    return (state.newsHistory || []).filter(n => n.day === day);
   }
 
   /* ---------- Expose ---------- */
   Object.assign(JI, {
-    NEWS_POOL,
-    ASSET_NEWS_TEMPLATES,
-    ASSET_SPIKE_RANGE,
+    NEWS_TEMPLATES,
     generateDailyNews,
-    generateAssetNews,
-    pickAssetHeadline,
-    buildImpactMap,
-    queueNewsEffects,
+    newsForDay,
+    pickHeadline,
   });
 })(window);

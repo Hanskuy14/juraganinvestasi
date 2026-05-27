@@ -8,45 +8,37 @@
   const JI = global.JI || (global.JI = {});
 
   const STORAGE_KEY = 'juragan_investasi_state_v1';
-  const STATE_VERSION = 5; // Phase 6
-  const STARTING_CAPITAL = 150_000_000; // Rp 150jt
-  const DAILY_OPS_COST  = 150_000;      // Rp 150rb / day
+  const STARTING_CAPITAL = 150_000_000; // Rp 150jt (legacy fallback)
+  const STATE_VERSION = 3;
+  const DEFAULT_DAILY_OPS_COST = 500_000; // Rp 500rb / hari (placeholder)
 
-  /* ---------- Company titles by level (Phase 3 spec) ----------
-     Level 1-3   : Retail Trader
-     Level 4-6   : Boutique Firm
-     Level 7-9   : Hedge Fund
-     Level 10+   : Conglomerate Tycoon
-  */
-  const TITLE_TIERS = [
-    { min: 1,  max: 3,        title: 'Retail Trader',      icon: '👤' },
-    { min: 4,  max: 6,        title: 'Boutique Firm',      icon: '🏢' },
-    { min: 7,  max: 9,        title: 'Hedge Fund',         icon: '💎' },
-    { min: 10, max: Infinity, title: 'Conglomerate Tycoon',icon: '👑' },
-  ];
+  // Phase 7 — custom starting capital bounds
+  const MIN_STARTING_CAPITAL = 10_000_000;             // Rp 10 juta
+  const MAX_STARTING_CAPITAL = 100_000_000_000_000;    // Rp 100 triliun
 
-  /* Kept for backward compatibility — populated as a flat list. */
+  /* ---------- Company titles by level ---------- */
   const COMPANY_TITLES = [
-    'Retail Trader','Retail Trader','Retail Trader',
-    'Boutique Firm','Boutique Firm','Boutique Firm',
-    'Hedge Fund','Hedge Fund','Hedge Fund',
-    'Conglomerate Tycoon',
+    /* L1  */ 'CV. Pemula',
+    /* L2  */ 'CV. Berkembang',
+    /* L3  */ 'PT. Investor Muda',
+    /* L4  */ 'PT. Mitra Modal',
+    /* L5  */ 'PT. Juragan Investasi',
+    /* L6  */ 'PT. Holding Nusantara',
+    /* L7  */ 'PT. Tycoon Capital',
+    /* L8  */ 'PT. Conglomerate Group',
+    /* L9  */ 'PT. Magnate Holdings',
+    /* L10 */ 'PT. Imperium Kapitalis',
   ];
 
-  /* XP curve per Phase 3 spec: companyXP >= companyLevel * 1000. */
+  /* XP needed to reach next level (index = current level - 1). */
   function xpToNext(level) {
-    return Math.max(1, Math.floor(level)) * 1000;
+    // Smooth curve: 1000, 2500, 5000, 8500, 13000, ...
+    return 500 * level * (level + 1);
   }
 
   function getCompanyTitle(level) {
-    const tier = TITLE_TIERS.find(t => level >= t.min && level <= t.max)
-              || TITLE_TIERS[TITLE_TIERS.length - 1];
-    return tier.title;
-  }
-
-  function getCompanyTitleTier(level) {
-    return TITLE_TIERS.find(t => level >= t.min && level <= t.max)
-        || TITLE_TIERS[TITLE_TIERS.length - 1];
+    const idx = JI.clamp(level - 1, 0, COMPANY_TITLES.length - 1);
+    return COMPANY_TITLES[idx];
   }
 
   /* ---------- Default state factory ---------- */
@@ -54,86 +46,121 @@
     return {
       version: STATE_VERSION,
       totalDays: 1,
-      totalNetWorth: STARTING_CAPITAL,
+      totalNetWorth: 0,
 
-      // Banks created by banking.js init when state is fresh.
+      // Phase 7 — Player identity
+      playerName: '',
+      playerGender: 'Bapak',     // 'Bapak' | 'Ibu'
+      startingCapital: 0,        // user-chosen Modal Awal
+
+      // Banks created by banking.js after onboarding completes.
       banks: [],
 
-      // Market — current per-asset prices keyed by ticker.
-      // Populated by market.js initMarket().
-      marketAssets: {},          // { BBCA: { price, prevPrice, change, ... }, ... }
-      marketHistory: {},         // { BBCA: [p1, p2, ...] (last N) }
+      // ----- Market & Portfolio (populated by market.js) -----
+      assetPrices: {},        // ticker -> currentPrice
+      priceHistory: {},       // ticker -> [last 60 closes]
+      portfolio: [],          // [{ticker, qty, avgPrice}]
 
-      // Portfolio holdings.
-      portfolio: [],             // [{ticker, category, qty, avgPrice, totalCost}]
+      // Phase 7 — assets created at runtime (player IPO, e-IPO listings).
+      // Each entry: { ticker, name, category, sector, initialPrice, volatility }
+      dynamicAssets: [],
 
-      // News
-      newsHistory: [],           // [{day, headline, body, targets}]
-      dailyNews: [],             // current day's news (subset of newsHistory)
-      lastNewsDay: 0,
-      // Phase 6: news generated TODAY queues effects here; effects are
-      // applied at the START of the NEXT calculateNextDayPrices() call.
-      // Shape: [{ ticker, multiplier, source: 'news'|'goreng' }]
-      pendingNewsEffects: [],
+      // ----- News -----
+      newsHistory: [],        // [{day, ticker, headline, sentiment, category}]
+      todaysNews: [],         // shortcut to today's headlines
 
-      // Tax (Phase 3)
-      taxLiabilities: [],        // [{id, type, baseAmount, owedAmount, dueDay, paid, paidDay, createdDay}]
-      taxStats: {
-        totalPPhPaid: 0,
-        totalAnnualPaid: 0,
-        totalPenaltiesPaid: 0,
-      },
+      // ----- Random events -----
+      eventLog: [],           // [{day, id, title, type}]
+      pendingEvent: null,     // event currently waiting to be acknowledged in UI
 
-      // HRD (Phase 3)
-      hiredEmployees: [],        // [{id, role, tier, salary, hiredOn}]
+      // ----- Tax & Ops -----
+      unpaidFinalTax: 0,      // Rp; cleared by Tax Amnesty event
+      annualTax: 0,           // Rp; cleared by Tax Amnesty event
+      dailyOpsCost: DEFAULT_DAILY_OPS_COST,
+      opsCostMultiplierToday: 1, // reset every Next Day; events can spike (e.g. x5)
 
-      // Physical assets
+      // ----- HRD / Aset placeholders (kept from prior phases) -----
+      hiredEmployees: [],
       physicalAssets: {
-        properties:    [],       // [{instanceId, key, name, capacity, value, purchaseDay}]
+        properties:    [],
         cars:          [],
         motorcycles:   [],
         officeCapacity: 0,
-        // Phase 6: Mega Infrastruktur ownership counts (qty per type)
-        infrastructure: { spbu: 0, garment: 0, hotel: 0, rsi: 0, tol: 0 },
       },
+
+      // Phase 7 — Venture Builder
+      myStartup: null,           // see venture.js for shape
+
+      // Phase 7 — e-IPO marketplace (populated by ipo.js on first run)
+      ipoPool: null,             // array of company defs not yet spawned
+      activeIPOs: [],            // companies currently accepting orders
+      ipoHistory: [],            // log of listing/refund events
 
       // Company progression
       companyLevel: 1,
       companyXP: 0,
 
-      // Lifetime broker / market metrics (Phase 3)
-      brokerStats: {
-        totalFeesPaid: 0,
-        totalCashbackEarned: 0,
-        totalRealizedPnL: 0,
-        profitableSells: 0,
-        losingSells: 0,
-      },
-
-      // Phase 4
-      vc: {
-        activeStartups: [],   // [{id, name, sector, seekingAmount, ...}]
-        lastRotationDay: 0,
-        investments: [],      // [{id, startupId, amount, openedDay, maturityDay, lockDays, fromBankId}]
-        maturedHistory: [],   // [{startupName, outcome, multiplier, originalAmount, payout, day}]
-      },
-      ipo: {
-        isPublic: false,
-        ipoDay: null,
-        lastDividendDay: null,
-      },
-      eventHistory: [],            // Black Swan log
-      activeEventModifier: null,   // {eventId, day, title, severity} — set the day a Black Swan fires
-
-      // Bookkeeping for the day-loop
-      lastMonthProcessed: 0,     // last "month index" for which monthly ops ran
-
       // UI
       activeTab: 'home',
       meta: {
         createdAt: Date.now(),
+        initialized: false,    // false until pre-game menu submitted
       },
     };
+  }
+
+  /* ---------- Migrations ----------
+     v1 -> v2: add Phase 5 fields without nuking the player's banks/level.
+     v2 -> v3: add Phase 7 fields (player identity, venture, IPO). Existing
+               saves with banks already populated are considered initialized. */
+  function migrate(state) {
+    if (!state) return defaultState();
+
+    // v1 -> v2 (carried over from prior phase)
+    if (!state.version || state.version < 2) {
+      const fresh = defaultState();
+      state = {
+        ...fresh,
+        ...state,
+        assetPrices:        state.assetPrices  || {},
+        priceHistory:       state.priceHistory || {},
+        portfolio:          Array.isArray(state.portfolio) ? state.portfolio : [],
+        newsHistory:        Array.isArray(state.newsHistory) ? state.newsHistory : [],
+        todaysNews:         [],
+        eventLog:           Array.isArray(state.eventLog) ? state.eventLog : [],
+        pendingEvent:       null,
+        unpaidFinalTax:     state.unpaidFinalTax || 0,
+        annualTax:          state.annualTax || 0,
+        dailyOpsCost:       state.dailyOpsCost || DEFAULT_DAILY_OPS_COST,
+        opsCostMultiplierToday: 1,
+        version: 2,
+      };
+    }
+
+    // v2 -> v3: Phase 7
+    if (state.version < 3) {
+      const meta = state.meta || { createdAt: Date.now() };
+      // Existing saves that have banks should be treated as already onboarded.
+      const wasInitialized = Array.isArray(state.banks) && state.banks.length > 0;
+      state = {
+        ...state,
+        playerName:       state.playerName       || (wasInitialized ? 'Juragan' : ''),
+        playerGender:     state.playerGender     || 'Bapak',
+        startingCapital:  state.startingCapital  || (wasInitialized ? STARTING_CAPITAL : 0),
+        dynamicAssets:    Array.isArray(state.dynamicAssets) ? state.dynamicAssets : [],
+        myStartup:        state.myStartup || null,
+        ipoPool:          Array.isArray(state.ipoPool) ? state.ipoPool : null,
+        activeIPOs:       Array.isArray(state.activeIPOs) ? state.activeIPOs : [],
+        ipoHistory:       Array.isArray(state.ipoHistory) ? state.ipoHistory : [],
+        meta: {
+          ...meta,
+          initialized: meta.initialized != null ? meta.initialized : wasInitialized,
+        },
+        version: 3,
+      };
+    }
+
+    return state;
   }
 
   /* ---------- Persistence ---------- */
@@ -161,148 +188,37 @@
   }
 
   /* ---------- Net worth recompute ----------
-     Phase 4 scope:
-       liquid           = bank balances
-       portfolio        = sum(qty * currentMarketPrice)
-       physical         = sum(properties + cars + motorcycles)
-       depositoLocked   = sum(active deposito principal — locked but still ours)
-       vcAtRisk         = sum(active VC investment principal)
-       debts            = active loan remaining + credit-card used
-     Phase 6 addition: + Mega Infrastruktur book value.
-     netWorth = liquid + portfolio + physical + infrastructure
-              + depositoLocked + vcAtRisk − debts
+     Banks balance + portfolio market value − active loan + CC debt.
   */
   function recomputeNetWorth(state) {
-    const banks = state.banks || [];
-    const bankSum = banks.reduce((a, b) => a + (b.balance || 0), 0);
-    const loanDebt = banks.reduce(
-      (a, b) => a + (b.loan && b.loan.isActive ? b.loan.remaining : 0), 0);
-    const ccDebt = banks.reduce(
-      (a, b) => a + (b.creditCard ? b.creditCard.used || 0 : 0), 0);
-    const depositoLocked = banks.reduce(
-      (a, b) => a + ((b.depositos || []).reduce(
-        (x, d) => x + (d.isMatured ? 0 : (d.principal || 0)), 0)),
-      0);
-
-    const portfolio = state.portfolio || [];
-    const market = state.marketAssets || {};
-    const portfolioValue = portfolio.reduce((sum, h) => {
-      const m = market[h.ticker];
-      const price = m ? m.price : (h.avgPrice || 0);
-      return sum + price * h.qty;
+    const bankSum = (state.banks || []).reduce((a, b) => a + (b.balance || 0), 0);
+    const loanDebt = (state.banks || []).reduce(
+      (a, b) => a + (b.loan && b.loan.isActive ? b.loan.remaining : 0),
+      0
+    );
+    const ccDebt = (state.banks || []).reduce(
+      (a, b) => a + (b.creditCard ? b.creditCard.used || 0 : 0),
+      0
+    );
+    const portfolioValue = (state.portfolio || []).reduce((a, p) => {
+      const px = (state.assetPrices || {})[p.ticker] || 0;
+      return a + px * (p.qty || 0);
     }, 0);
-
-    const phys = state.physicalAssets || {};
-    const sumValue = arr => (arr || []).reduce((a, x) => a + (x.value || 0), 0);
-    const physicalValue =
-      sumValue(phys.properties) + sumValue(phys.cars) + sumValue(phys.motorcycles);
-
-    // Phase 6: book value of Mega Infrastruktur (delegated to aset.js if loaded).
-    const infraValue = (typeof JI.totalInfrastructureValue === 'function')
-      ? JI.totalInfrastructureValue(state)
-      : 0;
-
-    const vcAtRisk = (state.vc && Array.isArray(state.vc.investments))
-      ? state.vc.investments.reduce((a, i) => a + (i.amount || 0), 0)
-      : 0;
-
-    state.totalNetWorth =
-      bankSum + portfolioValue + physicalValue + infraValue + depositoLocked + vcAtRisk
-      - loanDebt - ccDebt;
+    state.totalNetWorth = bankSum + portfolioValue - loanDebt - ccDebt;
     return state.totalNetWorth;
   }
 
-  /* ---------- XP / Level (Phase 3 spec) ----------
-     Threshold: companyLevel * 1000.
-     Returns: { leveledUp, levelsGained, newLevel, newTitle }
-  */
+  /* ---------- XP / Level ---------- */
   function awardXP(state, amount) {
     state.companyXP += Math.max(0, Math.floor(amount));
-    let levelsGained = 0;
-    while (state.companyXP >= xpToNext(state.companyLevel)) {
+    let leveled = false;
+    while (state.companyLevel < COMPANY_TITLES.length &&
+           state.companyXP >= xpToNext(state.companyLevel)) {
       state.companyXP -= xpToNext(state.companyLevel);
       state.companyLevel += 1;
-      levelsGained += 1;
-      if (state.companyLevel > 99) break; // safety
+      leveled = true;
     }
-    return {
-      leveledUp: levelsGained > 0,
-      levelsGained,
-      newLevel: state.companyLevel,
-      newTitle: getCompanyTitle(state.companyLevel),
-    };
-  }
-
-  /* ---------- Migration ---------- */
-  function migrateState(state) {
-    if (!state || typeof state !== 'object') return defaultState();
-
-    // Add missing top-level fields without wiping existing data.
-    const def = defaultState();
-    Object.keys(def).forEach(k => {
-      if (state[k] === undefined) state[k] = def[k];
-    });
-
-    // physicalAssets shape
-    state.physicalAssets = state.physicalAssets || def.physicalAssets;
-    ['properties', 'cars', 'motorcycles'].forEach(k => {
-      if (!Array.isArray(state.physicalAssets[k])) state.physicalAssets[k] = [];
-    });
-    if (typeof state.physicalAssets.officeCapacity !== 'number') {
-      state.physicalAssets.officeCapacity = 0;
-    }
-
-    state.marketAssets   = state.marketAssets   || {};
-    state.marketHistory  = state.marketHistory  || {};
-    state.portfolio      = state.portfolio      || [];
-    state.newsHistory    = state.newsHistory    || [];
-    state.dailyNews      = state.dailyNews      || [];
-    if (typeof state.lastNewsDay !== 'number') state.lastNewsDay = 0;
-
-    // Phase 3 fields
-    state.taxLiabilities = state.taxLiabilities || [];
-    state.taxStats       = state.taxStats       || def.taxStats;
-    state.hiredEmployees = state.hiredEmployees || [];
-    state.brokerStats    = state.brokerStats    || def.brokerStats;
-    if (typeof state.lastMonthProcessed !== 'number') state.lastMonthProcessed = 0;
-
-    // Phase 4 fields
-    state.vc           = state.vc           || def.vc;
-    state.vc.activeStartups   = state.vc.activeStartups   || [];
-    state.vc.investments      = state.vc.investments      || [];
-    state.vc.maturedHistory   = state.vc.maturedHistory   || [];
-    if (typeof state.vc.lastRotationDay !== 'number') state.vc.lastRotationDay = 0;
-
-    state.ipo          = state.ipo          || def.ipo;
-    if (typeof state.ipo.isPublic !== 'boolean') state.ipo.isPublic = false;
-
-    state.eventHistory = state.eventHistory || [];
-    if (state.activeEventModifier === undefined) state.activeEventModifier = null;
-
-    // Bank-level Phase 4 fields
-    (state.banks || []).forEach(b => {
-      if (!Array.isArray(b.history))   b.history = [];
-      if (!Array.isArray(b.depositos)) b.depositos = [];
-    });
-
-    // Phase 6 fields (v4 -> v5): delayed news queue + Mega Infrastruktur counts.
-    if (!Array.isArray(state.pendingNewsEffects)) state.pendingNewsEffects = [];
-    state.physicalAssets = state.physicalAssets || def.physicalAssets;
-    if (!state.physicalAssets.infrastructure ||
-        typeof state.physicalAssets.infrastructure !== 'object') {
-      state.physicalAssets.infrastructure = {
-        spbu: 0, garment: 0, hotel: 0, rsi: 0, tol: 0,
-      };
-    } else {
-      ['spbu', 'garment', 'hotel', 'rsi', 'tol'].forEach(k => {
-        if (state.physicalAssets.infrastructure[k] == null) {
-          state.physicalAssets.infrastructure[k] = 0;
-        }
-      });
-    }
-
-    state.version = STATE_VERSION;
-    return state;
+    return leveled;
   }
 
   /* ---------- Bootstrap ---------- */
@@ -311,7 +227,7 @@
     if (!state) {
       state = defaultState();
     } else {
-      state = migrateState(state);
+      state = migrate(state);
     }
     JI.gameState = state;
     return state;
@@ -320,20 +236,20 @@
   /* ---------- Expose ---------- */
   Object.assign(JI, {
     STARTING_CAPITAL,
-    DAILY_OPS_COST,
+    MIN_STARTING_CAPITAL,
+    MAX_STARTING_CAPITAL,
     STATE_VERSION,
+    DEFAULT_DAILY_OPS_COST,
     COMPANY_TITLES,
-    TITLE_TIERS,
     xpToNext,
     getCompanyTitle,
-    getCompanyTitleTier,
     defaultState,
+    migrate,
     loadState,
     saveState,
     resetState,
     recomputeNetWorth,
     awardXP,
     initState,
-    migrateState,
   });
 })(window);
