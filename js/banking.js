@@ -145,6 +145,141 @@
     bank.debitTier = debitTierFor(bank.balance);
   }
 
+  /* =========================================================================
+     UNIVERSAL CHARGE — used by market buys, asset purchases, etc.
+     payment = { method: 'bank' | 'credit', bankId: 'mandiri'|'bca'|'bni' }
+     - 'bank'   : deduct from chosen bank balance
+     - 'credit' : add to credit card 'used' if within available limit
+     ========================================================================= */
+  function charge(state, amount, payment) {
+    const amt = Math.floor(Number(amount) || 0);
+    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
+    if (!payment || !payment.method) {
+      return { ok: false, error: 'Metode pembayaran wajib dipilih.' };
+    }
+    const bank = getBank(state, payment.bankId);
+    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
+
+    if (payment.method === 'bank') {
+      if (bank.balance < amt) {
+        return { ok: false,
+          error: `Saldo ${bank.shortName} tidak cukup (butuh ${JI.formatIDR(amt)}).` };
+      }
+      bank.balance -= amt;
+      refreshDerived(bank);
+      return { ok: true, method: 'bank', bankId: bank.id, amount: amt };
+    }
+
+    if (payment.method === 'credit') {
+      if (!bank.creditCard.isApproved) {
+        return { ok: false,
+          error: `Kartu kredit ${bank.shortName} belum aktif.` };
+      }
+      const available = bank.creditCard.limit - bank.creditCard.used;
+      if (available < amt) {
+        return { ok: false,
+          error: `Limit kartu kredit ${bank.shortName} tidak cukup (sisa ${JI.formatIDR(available)}).` };
+      }
+      bank.creditCard.used += amt;
+      return { ok: true, method: 'credit', bankId: bank.id, amount: amt };
+    }
+
+    return { ok: false, error: 'Metode pembayaran tidak dikenali.' };
+  }
+
+  /* ---------- Refund (e.g. unused tax payments) ---------- */
+  function deposit(state, bankId, amount) {
+    const amt = Math.floor(Number(amount) || 0);
+    const bank = getBank(state, bankId);
+    if (!bank || amt <= 0) return { ok: false };
+    bank.balance += amt;
+    refreshDerived(bank);
+    return { ok: true };
+  }
+
+  /* =========================================================================
+     CREDIT CARD repayment from a bank balance.
+     ========================================================================= */
+  function repayCreditCard(state, bankId, amount) {
+    const bank = getBank(state, bankId);
+    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
+    if (!bank.creditCard.isApproved) {
+      return { ok: false, error: 'Kartu kredit belum aktif.' };
+    }
+    let amt = Math.floor(Number(amount) || 0);
+    if (amt <= 0) return { ok: false, error: 'Nominal tidak valid.' };
+    if (amt > bank.creditCard.used) amt = bank.creditCard.used;
+    if (bank.balance < amt) {
+      return { ok: false, error: `Saldo ${bank.shortName} tidak cukup.` };
+    }
+    bank.balance -= amt;
+    bank.creditCard.used -= amt;
+    refreshDerived(bank);
+    JI.recomputeNetWorth(state);
+    return { ok: true, paid: amt };
+  }
+
+  /* =========================================================================
+     DAILY LOAN TICKER — called once per day-advance.
+     For each active loan, deduct dailyInstallment from the same bank's balance.
+     If insufficient: try to pull from credit card limit; otherwise mark missed.
+     When term completes (daysRemaining == 0 and remaining ~0), close loan.
+     ========================================================================= */
+  function tickDailyLoans(state) {
+    const events = [];
+    (state.banks || []).forEach(bank => {
+      if (!bank.loan || !bank.loan.isActive) return;
+      const installment = Math.min(bank.loan.dailyInstallment, bank.loan.remaining);
+
+      if (bank.balance >= installment) {
+        bank.balance -= installment;
+        bank.loan.remaining -= installment;
+        events.push({
+          bankId: bank.id,
+          paid: installment,
+          source: 'bank',
+        });
+      } else if (bank.creditCard.isApproved &&
+                 (bank.creditCard.limit - bank.creditCard.used) >= installment) {
+        // Auto-fallback to credit card
+        bank.creditCard.used += installment;
+        bank.loan.remaining -= installment;
+        events.push({
+          bankId: bank.id,
+          paid: installment,
+          source: 'credit',
+          warning: true,
+        });
+      } else {
+        // Missed payment — apply small penalty to remaining balance
+        const penalty = Math.round(installment * 0.02);
+        bank.loan.remaining += penalty;
+        events.push({
+          bankId: bank.id,
+          paid: 0,
+          missed: true,
+          penalty,
+        });
+      }
+
+      bank.loan.daysRemaining = Math.max(0, bank.loan.daysRemaining - 1);
+      if (bank.loan.remaining <= 0 || bank.loan.daysRemaining === 0) {
+        // Close loan if fully paid; otherwise allow remainder to roll-up next tick.
+        if (bank.loan.remaining <= 0) {
+          bank.loan = {
+            isActive: false,
+            principal: 0, remaining: 0,
+            dailyInstallment: 0, daysRemaining: 0,
+            startedOnDay: 0,
+          };
+          events.push({ bankId: bank.id, closed: true });
+        }
+      }
+      refreshDerived(bank);
+    });
+    return events;
+  }
+
   /* ---------- Operation: Transfer between own bank accounts ---------- */
   function transfer(state, fromId, toId, amount) {
     if (fromId === toId) {
@@ -246,5 +381,11 @@
     LOAN_INTEREST_FLAT,
     LOAN_TERM_DAYS,
     CC_MAX_LIMIT,
+    // Phase 2 additions
+    charge,
+    deposit,
+    repayCreditCard,
+    tickDailyLoans,
+    refreshBankDerived: refreshDerived,
   });
 })(window);
