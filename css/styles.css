@@ -738,3 +738,74 @@ input[type=number] { -moz-appearance: textfield; }
   .blackswan-icon  { font-size: 5rem; }
   .blackswan-title { font-size: 2rem; }
 }
+
+
+
+/* ==========================================================================
+   Phase 5 — Sleek floating XP toast
+   Triggered on profitable sellAsset() via JI.showXPToast().
+   ========================================================================== */
+.xp-toast {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem 0.6rem 0.9rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+  color: #fde68a;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow:
+    0 0 0 1px rgba(253, 224, 71, 0.4) inset,
+    0 12px 30px -10px rgba(16, 185, 129, 0.6),
+    0 0 24px rgba(253, 224, 71, 0.25);
+  animation: xpToastIn 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both,
+             xpToastFloat 2.1s ease-in-out 0.45s infinite alternate;
+}
+.xp-toast-spark {
+  font-size: 1.05rem;
+  color: #fde68a;
+  text-shadow: 0 0 10px rgba(253, 224, 71, 0.7);
+  animation: xpSpark 1.4s linear infinite;
+}
+.xp-toast-amount {
+  font-size: 1.05rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  background: linear-gradient(90deg, #fde68a, #facc15, #34d399);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.xp-toast-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  color: #6ee7b7;
+}
+.xp-toast-note {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(253, 224, 71, 0.7);
+  border-left: 1px solid rgba(253, 224, 71, 0.35);
+  padding-left: 0.55rem;
+  margin-left: 0.25rem;
+  letter-spacing: 0.02em;
+}
+.xp-toast-leave {
+  animation: xpToastOut 0.4s ease-in forwards !important;
+}
+@keyframes xpToastIn {
+  0%   { opacity: 0; transform: translateY(14px) scale(0.85); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes xpToastFloat {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(-4px); }
+}
+@keyframes xpToastOut {
+  to { opacity: 0; transform: translateY(-22px) scale(0.9); }
+}
+@keyframes xpSpark {
+  0%, 100% { transform: rotate(0deg)   scale(1); }
+  50%      { transform: rotate(180deg) scale(1.25); }
+}

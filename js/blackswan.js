@@ -11,7 +11,8 @@
 
   const JI = global.JI || (global.JI = {});
 
-  const TRIGGER_CHANCE = 0.015; // 1.5% per day
+  // Phase 5: bumped from 1.5% to 8% per spec.
+  const TRIGGER_CHANCE = 0.08;
 
   /* ---------- Market scaling helpers ---------- */
   function scaleAllInCategory(state, category, factor) {
@@ -57,76 +58,205 @@
     return count;
   }
 
-  /* ---------- Catalogue ---------- */
+  /* ---------- Helpers for Phase 5 minor events ---------- */
+  function scaleAllReksadana(state, factor) {
+    return scaleAllInCategory(state, 'reksadana', factor);
+  }
+
+  /**
+   * Apply a random per-asset percentage drop/spike across an entire stock
+   * category (used for "Sentimen Tahun Politik Memanas" -15..-25%).
+   */
+  function scaleStocksRange(state, pctMin, pctMax) {
+    if (!state || !state.marketAssets) return 0;
+    let count = 0;
+    Object.values(state.marketAssets).forEach(a => {
+      if (a.category !== 'saham') return;
+      const factor = 1 + (pctMin + Math.random() * (pctMax - pctMin));
+      a.prevPrice = a.price;
+      a.price = Math.max(1, Math.round(a.price * factor));
+      a.dayChange = a.price - a.prevPrice;
+      a.dayChangePct = a.prevPrice > 0 ? (a.dayChange / a.prevPrice) * 100 : 0;
+      count += 1;
+    });
+    return count;
+  }
+
+  /**
+   * Deduct an exact rupiah amount from a randomly-chosen bank.
+   * Used for "Kantor Digeruduk Ormas — Rp 25.000.000".
+   */
+  function deductFromRandomBank(state, amount, label) {
+    if (!state.banks || state.banks.length === 0) return null;
+    const idx = JI.randomInt(0, state.banks.length - 1);
+    const bank = state.banks[idx];
+    if (typeof JI.bankDebit === 'function') {
+      JI.bankDebit(state, bank.id, amount, label || 'Kejadian Tak Terduga');
+    } else {
+      bank.balance -= amount;
+    }
+    return { bankId: bank.id, bankShortName: bank.shortName || bank.name, amount };
+  }
+
+  /**
+   * Charge an additional ops-cost multiplier for the SAME day.
+   * Phase 5 "Indihome / Biznet Mati": daily ops cost ×5 today.
+   * Since app.js already deducted 1× ops cost in step (a), we deduct
+   * the remaining 4× immediately so the net is ×5 for this day.
+   */
+  function applyOpsCostMultiplier(state, multiplier, label) {
+    const baseOps = JI.DAILY_OPS_COST || 150_000;
+    const extra = Math.max(0, Math.round(baseOps * (multiplier - 1)));
+    if (extra <= 0) return { extra: 0 };
+    if (typeof JI.deductFromBest === 'function') {
+      JI.deductFromBest(state, extra, label || 'Biaya Operasional Tambahan');
+    }
+    return { extra, multiplier };
+  }
+
+  /* ---------- Phase 5 catalogue (overrides legacy BLACK_SWAN_EVENTS) ---------- */
   const BLACK_SWAN_EVENTS = [
+    /* ============== MAJOR NEGATIVE LOCAL ============== */
     {
-      id: 'pandemic',
-      title: 'KRISIS PANDEMI GLOBAL',
-      headline: 'Wabah baru lumpuhkan ekonomi dunia',
-      body: 'Bursa terjun bebas, investor panik. Saham terkoreksi -30%, kripto runtuh -40%.',
+      id: 'tahunPolitik',
+      title: 'SENTIMEN TAHUN POLITIK MEMANAS',
+      headline: 'Eskalasi kampanye picu capital outflow asing',
+      body: 'Investor asing kompak menarik dana dari Indonesia menjelang pemilu. Seluruh saham IHSG terkoreksi -15% s/d -25%.',
       severity: 'red',
-      icon: '☣',
-      apply(s) {
-        scaleAllStocks(s, 0.70);
-        scaleAllCryptos(s, 0.60);
-      },
+      icon: '🗳',
+      apply(s) { scaleStocksRange(s, -0.25, -0.15); },
     },
     {
-      id: 'cryptoWinter',
-      title: 'CRYPTO WINTER',
-      headline: 'Bursa kripto tumbang ke titik terendah',
-      body: 'Likuiditas mengering. Seluruh aset kripto anjlok -60% dalam semalam.',
+      id: 'skandalKorupsi',
+      title: 'SKANDAL KORUPSI MEGA-PROYEK',
+      headline: 'KPK ungkap skandal yang seret puluhan emiten BUMN',
+      body: 'Saham & reksadana jatuh -20% akibat kepercayaan pasar runtuh.',
       severity: 'red',
-      icon: '❄',
+      icon: '⚖',
       apply(s) {
-        scaleAllCryptos(s, 0.40);
+        scaleAllStocks(s, 0.80);
+        scaleAllReksadana(s, 0.80);
       },
     },
+
+    /* ============== MAJOR POSITIVE LOCAL ============== */
     {
-      id: 'techBoom',
-      title: 'TECH BOOM',
-      headline: 'Revolusi AI menggerakkan euforia teknologi',
-      body: 'Saham teknologi dan kripto melonjak +50% dalam waktu singkat.',
+      id: 'windowDressing',
+      title: 'EFEK WINDOW DRESSING AKHIR TAHUN',
+      headline: 'Manajer Investasi & bank dongkrak saham portofolio',
+      body: 'Demi laporan akhir tahun yang cantik, seluruh saham IHSG melonjak +20%.',
       severity: 'green',
-      icon: '⚡',
+      icon: '🎁',
+      apply(s) { scaleAllStocks(s, 1.20); },
+    },
+    {
+      id: 'thrNasional',
+      title: 'PENCAIRAN THR NASIONAL',
+      headline: 'Triliunan rupiah THR Lebaran banjiri rekening pekerja',
+      body: 'Sektor Konsumsi & Perbankan kebanjiran transaksi, saham +25%.',
+      severity: 'green',
+      icon: '🧧',
       apply(s) {
-        scaleStocksBySector(s, ['Teknologi', 'Telekomunikasi'], 1.50);
-        scaleAllCryptos(s, 1.50);
+        scaleStocksBySector(s, ['Konsumsi', 'Perbankan'], 1.25);
       },
     },
     {
-      id: 'bankRun',
-      title: 'BANK RUN NASIONAL',
-      headline: 'Penarikan dana massal mengguncang sistem perbankan',
-      body: 'Saham perbankan ambruk -35%, kepercayaan investor terpukul.',
-      severity: 'red',
-      icon: '🏦',
-      apply(s) {
-        scaleStocksBySector(s, 'Perbankan', 0.65);
-      },
-    },
-    {
-      id: 'oilShock',
-      title: 'GUNCANGAN HARGA MINYAK',
-      headline: 'Krisis geopolitik picu lonjakan minyak dunia',
-      body: 'Saham otomotif anjlok -25%, sektor energi melonjak +20%.',
-      severity: 'amber',
+      id: 'investorTimurTengah',
+      title: 'SUNTIKAN INVESTOR TIMUR TENGAH KE IKN',
+      headline: 'SWF Timur Tengah komitmen puluhan miliar USD untuk IKN',
+      body: 'IHSG euforia, seluruh saham meroket +30%.',
+      severity: 'green',
       icon: '🛢',
+      apply(s) { scaleAllStocks(s, 1.30); },
+    },
+
+    /* ============== MAJOR CRYPTO / GLOBAL ============== */
+    {
+      id: 'bitcoinHalving',
+      title: 'BITCOIN HALVING FOMO',
+      headline: 'Halving Bitcoin picu euforia global ke seluruh altcoin',
+      body: 'FOMO global, seluruh aset kripto pump +50% dalam semalam.',
+      severity: 'green',
+      icon: '₿',
+      apply(s) { scaleAllCryptos(s, 1.50); },
+    },
+    {
+      id: 'ftxBangkrut',
+      title: 'BURSA KRIPTO GLOBAL FTX BANGKRUT',
+      headline: 'FTX dinyatakan pailit, panic-sell global menyapu kripto',
+      body: 'Likuiditas hilang massal. Seluruh aset kripto crash -60%.',
+      severity: 'red',
+      icon: '💥',
+      apply(s) { scaleAllCryptos(s, 0.40); },
+    },
+
+    /* ============== MINOR NEGATIVE LOCAL ============== */
+    {
+      id: 'ormasUangKeamanan',
+      title: 'KANTOR DIGERUDUK ORMAS',
+      headline: 'Ormas datang minta jatah "uang keamanan"',
+      body: 'Demi menghindari rusuh, dana Rp 25.000.000 terpaksa dicairkan dari rekening.',
+      severity: 'amber',
+      icon: '👊',
       apply(s) {
-        scaleStocksBySector(s, 'Otomotif', 0.75);
-        scaleStocksBySector(s, 'Energi',   1.20);
+        const r = deductFromRandomBank(s, 25_000_000, 'Uang Keamanan Ormas');
+        if (r && typeof JI.recomputeNetWorth === 'function') JI.recomputeNetWorth(s);
+        // Stash result on state for the modal to surface (optional).
+        s._lastEventDetail = r ? `Rp 25.000.000 terpotong dari ${r.bankShortName}.` : '';
       },
     },
     {
-      id: 'dovishBI',
-      title: 'BI POTONG SUKU BUNGA AGRESIF',
-      headline: 'Pelonggaran moneter mengangkat seluruh aset risiko',
-      body: 'Saham menguat +20%, kripto +30% dalam satu hari perdagangan.',
-      severity: 'green',
-      icon: '🕊',
+      id: 'indihomeMati',
+      title: 'KONEKSI INDIHOME / BIZNET MATI SE-JAWA',
+      headline: 'Kabel laut putus, internet kantor mati seharian',
+      body: 'Karyawan terpaksa pindah ke co-working & hotel. Biaya operasional hari ini dikalikan 5×.',
+      severity: 'amber',
+      icon: '📡',
       apply(s) {
-        scaleAllStocks(s,  1.20);
-        scaleAllCryptos(s, 1.30);
+        const r = applyOpsCostMultiplier(s, 5, 'Indihome/Biznet Mati — Pindah Hotel');
+        if (typeof JI.recomputeNetWorth === 'function') JI.recomputeNetWorth(s);
+        s._lastEventDetail = r && r.extra ? `+${JI.formatIDR(r.extra)} biaya tambahan dipotong hari ini.` : '';
+      },
+    },
+
+    /* ============== MINOR POSITIVE LOCAL ============== */
+    {
+      id: 'podcastDeddy',
+      title: 'DIUNDANG KE PODCAST DEDDY',
+      headline: 'Wawancara podcast paling viral se-Indonesia',
+      body: 'Perusahaan Anda jadi headline media. Trust meledak, +2000 XP instant.',
+      severity: 'green',
+      icon: '🎙',
+      apply(s) {
+        const xp = 2000;
+        const ev = JI.awardXP(s, xp);
+        s._lastEventDetail = ev && ev.leveledUp
+          ? `+${xp} XP — LEVEL UP ke Level ${ev.newLevel} (${ev.newTitle})!`
+          : `+${xp} XP ditambahkan ke companyXP.`;
+      },
+    },
+    {
+      id: 'taxAmnesty',
+      title: 'PROGRAM TAX AMNESTY DJP',
+      headline: 'DJP umumkan tax amnesty nasional',
+      body: 'Seluruh tunggakan pajak (PPh Final & Tahunan) dianggap lunas — Rp 0.',
+      severity: 'green',
+      icon: '🧾',
+      apply(s) {
+        let cleared = 0;
+        (s.taxLiabilities || []).forEach(liab => {
+          if (!liab.isPaid) {
+            cleared += (liab.owedAmount || 0);
+            liab.paid = liab.owedAmount;
+            liab.owedAmount = 0;
+            liab.isPaid = true;
+            liab.paidDay = s.totalDays;
+            liab.paidVia = 'tax-amnesty';
+          }
+        });
+        s._lastEventDetail = cleared > 0
+          ? `Tunggakan ${JI.formatIDR(cleared)} dihapus jadi Rp 0.`
+          : 'Tidak ada tunggakan — DJP kirim surat penghargaan untuk Anda.';
       },
     },
   ];
@@ -214,5 +344,10 @@
     scaleAllStocks,
     scaleAllCryptos,
     scaleStocksBySector,
+    // Phase 5 helpers (exposed for tests / debug)
+    scaleAllReksadana,
+    scaleStocksRange,
+    deductFromRandomBank,
+    applyOpsCostMultiplier,
   });
 })(window);

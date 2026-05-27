@@ -69,7 +69,7 @@
       lastDividendDay: state.totalDays,
     };
 
-    JI.awardXP(state, 5000);
+    // Phase 5: no XP from IPO — companyXP is awarded ONLY in sellAsset().
     JI.recomputeNetWorth(state);
 
     showIPOModal(state);

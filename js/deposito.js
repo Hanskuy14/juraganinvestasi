@@ -62,7 +62,7 @@
     bank.depositos.push(dep);
 
     JI.recomputeNetWorth(state);
-    JI.awardXP(state, Math.min(150, Math.floor(amt / 10_000_000)));
+    // Phase 5: no XP from opening deposito.
     return { ok: true, deposito: dep };
   }
 

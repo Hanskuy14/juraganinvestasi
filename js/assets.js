@@ -237,7 +237,7 @@
     }
 
     JI.recomputeNetWorth(state);
-    JI.awardXP(state, Math.min(200, Math.floor(def.price / 50_000_000)));
+    // Phase 5: no XP from buying physical assets.
 
     return { ok: true, kind, item, payment: charged };
   }

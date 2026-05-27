@@ -1206,9 +1206,12 @@
         const r = JI.sellAsset(s, ticker, q, bankSel.value);
         if (!r.ok) return JI.toast(r.error, 'error');
         const sign = r.grossPnL >= 0 ? '+' : '';
-        const xpInfo = r.xpAwarded ? ` · +${r.xpAwarded} XP` : '';
+        // Phase 5: sleek floating XP toast on profitable sells.
+        if (r.xpAwarded > 0 && JI.showXPToast) {
+          JI.showXPToast(r.xpAwarded, { note: `Profit ${JI.formatIDR(r.grossPnL)}` });
+        }
         JI.toast(
-          `Jual ${q} ${ticker}: net ${JI.formatIDR(r.netProceeds)} (${sign}${JI.formatIDR(r.grossPnL)})${xpInfo}.`,
+          `Jual ${q} ${ticker}: net ${JI.formatIDR(r.netProceeds)} (${sign}${JI.formatIDR(r.grossPnL)}).`,
           r.grossPnL >= 0 ? 'success' : 'warning'
         );
         if (r.levelEvent && r.levelEvent.leveledUp) {

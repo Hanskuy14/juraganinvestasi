@@ -401,7 +401,7 @@
     recordHistory(state, from, 'OUT', amt, `Transfer ke ${to.shortName}`);
     recordHistory(state, to,   'IN',  amt, `Transfer dari ${from.shortName}`);
     JI.recomputeNetWorth(state);
-    JI.awardXP(state, Math.min(50, Math.floor(amt / 1_000_000)));
+    // Phase 5: no XP from transfers. XP is awarded only in sellAsset().
     return { ok: true, amount: amt };
   }
 
@@ -419,7 +419,7 @@
     bank.creditCard.isApproved = true;
     bank.creditCard.limit = offer.limit;
     bank.creditCard.used = 0;
-    JI.awardXP(state, 80);
+    // Phase 5: no XP from CC approval.
     return { ok: true, limit: offer.limit };
   }
 
@@ -452,7 +452,7 @@
     refreshDerived(bank);
     recordHistory(state, bank, 'IN', p, 'Pencairan KTA');
     JI.recomputeNetWorth(state);
-    JI.awardXP(state, 120);
+    // Phase 5: no XP from taking out a loan.
     return { ok: true, quote: q };
   }
 

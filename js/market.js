@@ -221,6 +221,32 @@
         if (h.length > HISTORY_LENGTH) h.shift();
       });
     });
+
+    // ----------------------------------------------------------------------
+    // Phase 5: explicit asset-specific spike from today's headlines.
+    // Bullish stock|reksadana : +5..+15%, bullish crypto: +5..+40%,
+    // bearish (any): -5..-20%. Overrides random-walk for the named ticker.
+    // ----------------------------------------------------------------------
+    (state.dailyNews || []).forEach(news => {
+      const spike = news && news.assetSpike;
+      if (!spike) return;
+      const m = state.marketAssets[spike.ticker];
+      if (!m) return;
+      const [lo, hi] = spike.range || [0, 0];
+      const pct = lo + Math.random() * (hi - lo); // signed
+      const before = m.prevPrice; // pre-walk close
+      const next = Math.max(1, Math.round(before * (1 + pct)));
+      m.price = next;
+      m.dayChange = next - before;
+      m.dayChangePct = before > 0 ? (m.dayChange / before) * 100 : 0;
+      // Overwrite the last point in history (the random-walk-pushed value).
+      const hist = state.marketHistory[spike.ticker];
+      if (Array.isArray(hist) && hist.length > 0) {
+        hist[hist.length - 1] = next;
+      }
+      // Annotate the news object with the realized pct (handy for UI debug).
+      news.realizedPct = pct;
+    });
   }
 
   /* =========================================================================

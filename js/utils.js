@@ -152,6 +152,27 @@
     }, timeoutMs);
   }
 
+  /* ---------- Sleek floating XP toast (Phase 5) ----------
+     Used when sellAsset() yields profit. Renders a gold/emerald pill with
+     a floating animation. Driven entirely by CSS classes. */
+  function showXPToast(amount, opts = {}) {
+    const container = document.getElementById('toast-container');
+    if (!container || !amount || amount <= 0) return;
+
+    const t = el('div', { class: 'xp-toast' }, [
+      el('span', { class: 'xp-toast-spark' }, '✦'),
+      el('span', { class: 'xp-toast-amount' }, `+${Math.floor(amount).toLocaleString('id-ID')}`),
+      el('span', { class: 'xp-toast-label' }, 'XP'),
+      opts.note ? el('span', { class: 'xp-toast-note' }, opts.note) : null,
+    ]);
+    container.appendChild(t);
+
+    setTimeout(() => {
+      t.classList.add('xp-toast-leave');
+      setTimeout(() => t.remove(), 450);
+    }, 2200);
+  }
+
   /* ---------- Clamp ---------- */
   function clamp(n, min, max) {
     return Math.max(min, Math.min(max, n));
@@ -168,6 +189,7 @@
     splitUnequal,
     $, $$, el,
     toast,
+    showXPToast,
     clamp,
   });
 })(window);
