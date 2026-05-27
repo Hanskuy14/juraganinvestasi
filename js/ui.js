@@ -10,14 +10,15 @@
 
   /* ---------- Tab definitions ---------- */
   const TABS = [
-    { id: 'home',      label: 'Home',       icon: '🏠', mobilePrimary: true  },
-    { id: 'banking',   label: 'Banking',    icon: '🏦', mobilePrimary: true  },
-    { id: 'market',    label: 'Market',     icon: '📈', mobilePrimary: true  },
-    { id: 'portfolio', label: 'Portfolio',  icon: '💼', mobilePrimary: true  },
-    { id: 'news',      label: 'News',       icon: '📰', mobilePrimary: false },
-    { id: 'coretax',   label: 'CoreTax DJP',icon: '🧾', mobilePrimary: false },
-    { id: 'hrd',       label: 'HRD',        icon: '👥', mobilePrimary: false },
-    { id: 'aset',      label: 'Aset Fisik', icon: '🏢', mobilePrimary: false },
+    { id: 'home',      label: 'Home',         icon: '🏠', mobilePrimary: true  },
+    { id: 'banking',   label: 'Banking',      icon: '🏦', mobilePrimary: true  },
+    { id: 'vc',        label: 'Venture Cap.', icon: '🚀', mobilePrimary: true  },
+    { id: 'market',    label: 'Market',       icon: '📈', mobilePrimary: true  },
+    { id: 'portfolio', label: 'Portfolio',    icon: '💼', mobilePrimary: false },
+    { id: 'news',      label: 'News',         icon: '📰', mobilePrimary: false },
+    { id: 'coretax',   label: 'CoreTax DJP',  icon: '🧾', mobilePrimary: false },
+    { id: 'hrd',       label: 'HRD',          icon: '👥', mobilePrimary: false },
+    { id: 'aset',      label: 'Aset Fisik',   icon: '🏢', mobilePrimary: false },
   ];
 
   /* =========================================================================
@@ -248,6 +249,7 @@
     ({
       home:      renderHomePanel,
       banking:   renderBankingPanel,
+      vc:        renderVCPanel,
       market:    renderMarketPanel,
       portfolio: renderPortfolioPanel,
       news:      renderNewsPanel,
@@ -274,8 +276,10 @@
     JI.recomputeNetWorth(s);
     const xpNeed = JI.xpToNext(s.companyLevel);
     const xpPct  = JI.clamp(Math.round((s.companyXP / xpNeed) * 100), 0, 100);
-    const title  = JI.getCompanyTitle(s.companyLevel);
+    const isPublic = !!(s.ipo && s.ipo.isPublic);
+    const title  = isPublic ? 'Public Listed Company' : JI.getCompanyTitle(s.companyLevel);
     const tier   = JI.getCompanyTitleTier ? JI.getCompanyTitleTier(s.companyLevel) : { icon: '🏛' };
+    const titleIcon = isPublic ? '◉' : tier.icon;
     const perks  = JI.getActivePerks ? JI.getActivePerks(s) : { analyst: null, taxConsultant: null, broker: null };
 
     panel.innerHTML = '';
@@ -287,13 +291,16 @@
     hero.appendChild(JI.el('div', { class: 'absolute -top-16 -right-16 w-64 h-64 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none' }));
     hero.appendChild(JI.el('div', { class: 'flex items-start justify-between gap-3 flex-wrap' }, [
       JI.el('div', {}, [
-        JI.el('p', { class: 'text-xs uppercase tracking-[0.3em] text-emerald-400 mb-2' }, 'Welcome back, Juragan'),
+        JI.el('p', { class: 'text-xs uppercase tracking-[0.3em] text-emerald-400 mb-2' },
+          isPublic ? 'Public Listed Company' : 'Welcome back, Juragan'),
         JI.el('h2', { class: 'text-2xl sm:text-4xl font-extrabold tracking-tight' }, 'Juragan Investasi: Capitalist Tycoon'),
         JI.el('p', { class: 'text-slate-300 mt-2 max-w-xl text-sm sm:text-base' },
-          'Bangun imperium investasi Anda di Indonesia. Kelola kas, manfaatkan kredit, dan tumbuhkan kekayaan dari hari ke hari.'),
+          isPublic
+            ? 'Anda telah melantai di Bursa Efek Indonesia. Wajib bayar dividen 5% kepada publik setiap 12 bulan.'
+            : 'Bangun imperium investasi Anda di Indonesia. Kelola kas, manfaatkan kredit, dan tumbuhkan kekayaan dari hari ke hari.'),
       ]),
       JI.el('div', { class: 'tier-pill flex items-center gap-2 self-start mt-1' }, [
-        JI.el('span', { class: 'text-xl leading-none' }, tier.icon),
+        JI.el('span', { class: 'text-xl leading-none' }, titleIcon),
         JI.el('div', {}, [
           JI.el('p', { class: 'text-[10px] uppercase tracking-widest text-emerald-300/80' }, `Level ${s.companyLevel}`),
           JI.el('p', { class: 'font-bold text-sm leading-tight' }, title),
@@ -343,6 +350,9 @@
     lvlCard.appendChild(JI.el('p', { class: 'mt-3 text-xs text-slate-500' },
       `Naik level dari profit jual aset (50 XP + 1 XP per Rp 1jt profit). Threshold berikutnya: Level ${s.companyLevel + 1}.`));
     panel.appendChild(lvlCard);
+
+    /* Phase 4: IPO go-public card */
+    panel.appendChild(renderIPOCard(s));
 
     /* Operations strip — capacity, payroll, unpaid tax, CC debt */
     const opsGrid = JI.el('div', { class: 'grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6' });
@@ -536,6 +546,8 @@
     body.appendChild(renderTransferSection(bank));
     body.appendChild(renderCreditCardSection(bank, offer));
     body.appendChild(renderLoanSection(bank, maxLoan));
+    body.appendChild(renderDepositoSection(bank));
+    body.appendChild(renderHistorySection(bank));
     card.appendChild(body);
     return card;
   }
@@ -1745,6 +1757,321 @@
     content.appendChild(btn);
 
     openModal('Bayar Pajak', content);
+  }
+
+  /* =========================================================================
+     PHASE 4 — Deposito Berjangka section (per bank card)
+     ========================================================================= */
+  function renderDepositoSection(bank) {
+    const s = JI.gameState;
+    const wrap = JI.el('section', {});
+    wrap.appendChild(sectionTitle('Deposito Berjangka',
+      'Kunci dana untuk bunga jaminan saat jatuh tempo.'));
+
+    if (bank.depositos && bank.depositos.length > 0) {
+      const list = JI.el('div', { class: 'space-y-2 mb-3' });
+      bank.depositos.forEach(d => {
+        const daysLeft = Math.max(0, d.maturityDay - s.totalDays);
+        const elapsed = d.days - daysLeft;
+        const pct = JI.clamp(Math.round((elapsed / d.days) * 100), 0, 100);
+        list.appendChild(JI.el('div', { class: 'rounded-lg border border-blue-200 bg-blue-50 p-3' }, [
+          JI.el('div', { class: 'flex items-center justify-between flex-wrap gap-2' }, [
+            JI.el('span', { class: 'font-semibold text-sm text-blue-800' },
+              `${JI.formatIDR(d.principal)} · ${d.months} bln · ${(d.rate*100).toFixed(0)}%`),
+            JI.el('span', { class: 'text-xs font-mono text-blue-800' },
+              `${daysLeft} hari lagi`),
+          ]),
+          JI.el('p', { class: 'text-[11px] text-blue-700 mt-1' },
+            `Jatuh tempo ${JI.formatCalendar(d.maturityDay)} → ${JI.formatIDR(d.payout)}`),
+          JI.el('div', { class: 'xp-bar mt-2' }, [
+            JI.el('span', { style: `width:${pct}%; background:linear-gradient(90deg,#3b82f6,#1d4ed8)` }),
+          ]),
+        ]));
+      });
+      wrap.appendChild(list);
+    }
+
+    const amtInput = JI.el('input', {
+      type: 'number', inputmode: 'numeric', min: '1000000', step: '1',
+      placeholder: 'Nominal deposito (Rp)', class: 'ji-input',
+    });
+    const tenorSelect = JI.el('select', { class: 'ji-input ji-select' });
+    JI.DEPOSITO_TERMS.forEach(t => {
+      tenorSelect.appendChild(JI.el('option', { value: t.months },
+        `${t.label} — ${(t.rate*100).toFixed(0)}% bunga`));
+    });
+
+    const previewEl = JI.el('p', { class: 'text-xs text-slate-500 font-mono mt-2' },
+      'Bunga estimasi muncul di sini.');
+    function updatePreview() {
+      const amt = JI.parseIDRInput(amtInput.value);
+      const term = JI.DEPOSITO_TERMS.find(t => t.months === Number(tenorSelect.value));
+      if (!amt || !term) {
+        previewEl.textContent = 'Bunga estimasi muncul di sini.';
+        return;
+      }
+      const interest = Math.round(amt * term.rate);
+      previewEl.textContent =
+        `+${JI.formatIDR(interest)} bunga · payout ${JI.formatIDR(amt + interest)} di hari ${s.totalDays + term.days}.`;
+    }
+    amtInput.addEventListener('input', updatePreview);
+    tenorSelect.addEventListener('change', updatePreview);
+
+    const openBtn = JI.el('button', {
+      class: 'ji-btn ji-btn-primary w-full mt-3',
+      onclick: () => {
+        const amt = JI.parseIDRInput(amtInput.value);
+        const r = JI.openDeposito(s, bank.id, amt, Number(tenorSelect.value));
+        if (!r.ok) return JI.toast(r.error, 'error');
+        JI.toast(`Deposito ${r.deposito.months} bulan dibuka di ${bank.shortName}.`);
+        amtInput.value = '';
+        JI.saveState(s);
+        renderHeader();
+        renderBankingPanel(JI.$('[data-tab-panel="banking"]'));
+      },
+    }, 'Buka Deposito');
+
+    wrap.appendChild(JI.el('div', { class: 'grid grid-cols-1 sm:grid-cols-2 gap-2' }, [
+      labelled('Nominal', amtInput),
+      labelled('Tenor', tenorSelect),
+    ]));
+    wrap.appendChild(previewEl);
+    wrap.appendChild(openBtn);
+    return wrap;
+  }
+
+  /* =========================================================================
+     PHASE 4 — Mutasi Rekening (audit trail per bank card)
+     ========================================================================= */
+  function renderHistorySection(bank) {
+    const wrap = JI.el('section', {});
+    wrap.appendChild(sectionTitle('Mutasi Rekening',
+      'Riwayat transaksi terbaru di rekening ini.'));
+
+    if (!bank.history || bank.history.length === 0) {
+      wrap.appendChild(JI.el('p', { class: 'text-xs text-slate-400 italic' },
+        'Belum ada transaksi.'));
+      return wrap;
+    }
+
+    const list = JI.el('div', { class: 'mutasi-list' });
+    const recent = [...bank.history].reverse().slice(0, 30);
+    recent.forEach(r => {
+      const row = JI.el('div', { class: `mutasi-row ${r.type === 'IN' ? 'in' : 'out'}` });
+      row.appendChild(JI.el('div', { class: 'mutasi-row-main' }, [
+        JI.el('span', { class: 'mutasi-type' }, r.type),
+        JI.el('div', { class: 'mutasi-desc' }, [
+          JI.el('p', { class: 'text-sm font-medium leading-tight' }, r.description),
+          JI.el('p', { class: 'text-[11px] text-slate-500 font-mono' }, r.date),
+        ]),
+      ]));
+      row.appendChild(JI.el('span', { class: 'mutasi-amount' },
+        (r.type === 'IN' ? '+ ' : '− ') + JI.formatIDR(r.amount)));
+      list.appendChild(row);
+    });
+    wrap.appendChild(list);
+
+    if (bank.history.length > 30) {
+      wrap.appendChild(JI.el('p', { class: 'text-[11px] text-slate-400 mt-2 text-center' },
+        `Menampilkan 30 dari ${bank.history.length} transaksi.`));
+    }
+    return wrap;
+  }
+
+  /* =========================================================================
+     PHASE 4 — Venture Capital tab
+     ========================================================================= */
+  function renderVCPanel(panel) {
+    const s = JI.gameState;
+    if (JI.maybeRotateVC) JI.maybeRotateVC(s);
+    panel.innerHTML = '';
+
+    panel.appendChild(JI.el('div', { class: 'mb-5 flex items-end justify-between flex-wrap gap-3' }, [
+      JI.el('div', {}, [
+        JI.el('h2', { class: 'text-2xl sm:text-3xl font-bold' }, '🚀 Venture Capital'),
+        JI.el('p', { class: 'text-slate-500 text-sm mt-1' },
+          'Suntik modal ke startup lokal. 3 startup aktif, dirotasi setiap 30 hari.'),
+      ]),
+      JI.el('div', { class: 'text-right' }, [
+        JI.el('p', { class: 'text-[11px] uppercase tracking-wider text-slate-500' }, 'Rotasi Berikutnya'),
+        JI.el('p', { class: 'font-mono text-sm' },
+          `${Math.max(0, JI.VC_ROTATION_DAYS - (s.totalDays - s.vc.lastRotationDay))} hari`),
+      ]),
+    ]));
+
+    const grid = JI.el('div', { class: 'grid grid-cols-1 md:grid-cols-3 gap-4 mb-6' });
+    s.vc.activeStartups.forEach(st => grid.appendChild(renderStartupCard(st)));
+    panel.appendChild(grid);
+
+    panel.appendChild(renderActiveInvestments(s));
+    panel.appendChild(renderVCHistory(s));
+  }
+
+  function renderStartupCard(st) {
+    const s = JI.gameState;
+    const card = JI.el('div', { class: 'ji-card p-5 vc-card flex flex-col gap-3' });
+
+    card.appendChild(JI.el('div', { class: 'flex items-start justify-between gap-2' }, [
+      JI.el('div', {}, [
+        JI.el('div', { class: 'text-3xl mb-1' }, st.icon),
+        JI.el('h3', { class: 'font-bold text-lg leading-tight' }, st.name),
+        JI.el('p', { class: 'text-[11px] uppercase tracking-wider text-slate-500' }, st.sector),
+      ]),
+      JI.el('span', { class: 'text-[10px] text-slate-400 font-mono' },
+        `Seek ${JI.formatIDRCompact(st.seekingAmount)}`),
+    ]));
+    card.appendChild(JI.el('p', { class: 'text-xs text-slate-600 leading-snug' }, st.pitch));
+
+    const bankSelect = JI.el('select', { class: 'ji-input ji-select' });
+    s.banks.forEach(b => {
+      bankSelect.appendChild(JI.el('option', { value: b.id },
+        `${b.shortName} — ${JI.formatIDR(b.balance)}`));
+    });
+
+    const amtInput = JI.el('input', {
+      type: 'number', inputmode: 'numeric', min: '1000000', step: '1',
+      placeholder: 'Nominal (Rp)', class: 'ji-input',
+    });
+
+    const investBtn = JI.el('button', {
+      class: 'ji-btn ji-btn-primary w-full',
+      onclick: () => {
+        const amt = JI.parseIDRInput(amtInput.value);
+        const r = JI.investInStartup(s, st.id, amt, bankSelect.value);
+        if (!r.ok) return JI.toast(r.error, 'error');
+        JI.toast(`Berinvestasi ${JI.formatIDR(amt)} di ${st.name} (lock ${r.investment.lockDays} hari).`,
+          'success');
+        amtInput.value = '';
+        JI.saveState(s);
+        renderHeader();
+        renderVCPanel(JI.$('[data-tab-panel="vc"]'));
+      },
+    }, 'Investasi');
+
+    card.appendChild(labelled('Sumber Dana', bankSelect));
+    card.appendChild(labelled('Nominal Investasi', amtInput));
+    card.appendChild(JI.el('p', { class: 'text-[11px] text-slate-400 font-mono' },
+      `Lock random ${JI.VC_LOCK_MIN_DAYS}–${JI.VC_LOCK_MAX_DAYS} hari · Outcome RNG (70 / 20 / 10)`));
+    card.appendChild(investBtn);
+    return card;
+  }
+
+  function renderActiveInvestments(s) {
+    const wrap = JI.el('div', { class: 'ji-card p-5 mb-6' });
+    wrap.appendChild(sectionTitle(`Investasi Aktif (${s.vc.investments.length})`,
+      'Posisi terbuka. Akan dijatuh-tempokan otomatis.'));
+
+    if (s.vc.investments.length === 0) {
+      wrap.appendChild(JI.el('p', { class: 'text-xs text-slate-400 italic' },
+        'Belum ada investasi aktif.'));
+      return wrap;
+    }
+
+    const list = JI.el('div', { class: 'space-y-2' });
+    s.vc.investments.forEach(inv => {
+      const daysLeft = Math.max(0, inv.maturityDay - s.totalDays);
+      const elapsed  = inv.lockDays - daysLeft;
+      const pct = JI.clamp(Math.round((elapsed / inv.lockDays) * 100), 0, 100);
+      list.appendChild(JI.el('div', { class: 'rounded-lg border border-violet-200 bg-violet-50 p-3' }, [
+        JI.el('div', { class: 'flex items-center justify-between flex-wrap gap-2' }, [
+          JI.el('span', { class: 'font-semibold text-sm text-violet-900' },
+            `${inv.icon} ${inv.startupName} · ${JI.formatIDR(inv.amount)}`),
+          JI.el('span', { class: 'text-xs font-mono text-violet-900' },
+            `${daysLeft} hari lagi`),
+        ]),
+        JI.el('p', { class: 'text-[11px] text-violet-700 mt-1 font-mono' },
+          `Open ${JI.formatCalendar(inv.openedDay)} → Maturity ${JI.formatCalendar(inv.maturityDay)}`),
+        JI.el('div', { class: 'xp-bar mt-2' }, [
+          JI.el('span', { style: `width:${pct}%; background:linear-gradient(90deg,#8b5cf6,#6d28d9)` }),
+        ]),
+      ]));
+    });
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  function renderVCHistory(s) {
+    const wrap = JI.el('div', { class: 'ji-card p-5' });
+    wrap.appendChild(sectionTitle('Riwayat Hasil Investasi',
+      'Setiap startup yang sudah jatuh tempo.'));
+
+    if (!s.vc.maturedHistory || s.vc.maturedHistory.length === 0) {
+      wrap.appendChild(JI.el('p', { class: 'text-xs text-slate-400 italic' },
+        'Belum ada hasil. Tunggu maturity investasi pertama Anda.'));
+      return wrap;
+    }
+
+    const list = JI.el('div', { class: 'space-y-2' });
+    s.vc.maturedHistory.slice(0, 30).forEach(r => {
+      const cls = r.outcome === 'Bankrupt'    ? 'vc-out-bad'
+                : r.outcome === 'Acquisition' ? 'vc-out-good'
+                                              : 'vc-out-best';
+      list.appendChild(JI.el('div', { class: `vc-history-row ${cls}` }, [
+        JI.el('div', {}, [
+          JI.el('p', { class: 'text-sm font-semibold' },
+            `${r.icon || ''} ${r.startupName} — ${r.outcome}`),
+          JI.el('p', { class: 'text-[11px] font-mono opacity-80' },
+            `Open Hari ${r.openedDay} → Mature ${JI.formatCalendar(r.day)}`),
+        ]),
+        JI.el('div', { class: 'text-right' }, [
+          JI.el('p', { class: 'font-mono text-sm font-bold' },
+            `${r.multiplier}× → ${JI.formatIDR(r.payout)}`),
+          JI.el('p', { class: 'text-[11px] opacity-80 font-mono' },
+            `dari ${JI.formatIDR(r.originalAmount)}`),
+        ]),
+      ]));
+    });
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  /* =========================================================================
+     PHASE 4 — IPO card on Home
+     ========================================================================= */
+  function renderIPOCard(s) {
+    const eligible = JI.isIPOEligible ? JI.isIPOEligible(s) : false;
+    const isPublic = !!(s.ipo && s.ipo.isPublic);
+    const reason   = JI.ipoEligibilityReason ? JI.ipoEligibilityReason(s) : '';
+
+    const card = JI.el('div', { class: 'ji-card p-6 mb-6 ipo-card' });
+    card.appendChild(JI.el('div', { class: 'flex items-start justify-between gap-3 flex-wrap mb-3' }, [
+      JI.el('div', {}, [
+        JI.el('p', { class: 'text-xs uppercase tracking-wider text-slate-500' }, 'Ultimate Goal'),
+        JI.el('h3', { class: 'text-xl font-bold mt-1' }, 'Initial Public Offering (IPO)'),
+        JI.el('p', { class: 'text-xs text-slate-500 mt-1' },
+          `Syarat: Level ${JI.IPO_LEVEL_REQ}+ · Net Worth ${JI.formatIDR(JI.IPO_NETWORTH_REQ)}`),
+      ]),
+      isPublic ? JI.el('span', { class: 'ipo-badge' }, '◉ PUBLIC LISTED') : null,
+    ]));
+
+    if (isPublic) {
+      const ipoDay = s.ipo.ipoDay;
+      const sinceLast = s.totalDays - (s.ipo.lastDividendDay || ipoDay);
+      const daysToDiv = Math.max(0, JI.IPO_DIVIDEND_INTERVAL - sinceLast);
+      card.appendChild(JI.el('div', { class: 'rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm' }, [
+        JI.el('p', { class: 'font-semibold text-emerald-700 mb-1' }, '✓ Sudah Go Public'),
+        JI.el('p', { class: 'text-slate-700' },
+          `IPO pada ${JI.formatCalendar(ipoDay)}. Dividen 5% NW berikutnya dalam ${daysToDiv} hari.`),
+      ]));
+    } else {
+      const btn = JI.el('button', {
+        class: 'ji-btn ji-btn-success w-full sm:w-auto',
+        onclick: () => {
+          const r = JI.goPublic(JI.gameState);
+          if (!r.ok) return JI.toast(r.error, 'error');
+          JI.toast(`🎉 Go Public! +${JI.formatIDR(r.injected)} masuk rekening.`, 'success', 6000);
+          JI.saveState(JI.gameState);
+          JI.renderAll();
+        },
+      }, [JI.el('span', {}, '🔔'), 'Go Public (IPO)']);
+      if (!eligible) btn.setAttribute('disabled', 'disabled');
+
+      card.appendChild(JI.el('p', {
+        class: `text-xs mb-3 ${eligible ? 'text-emerald-600' : 'text-slate-500'}`
+      }, eligible ? 'Memenuhi syarat IPO. Klik tombol di bawah.' : reason));
+      card.appendChild(btn);
+    }
+    return card;
   }
 
   /* =========================================================================

@@ -208,7 +208,10 @@
     }
     if (!def) return { ok: false, error: 'Item tidak ditemukan di katalog.' };
 
-    const charged = JI.charge(state, def.price, payment);
+    const charged = JI.charge(state, def.price, {
+      ...payment,
+      label: `Beli ${kind === 'property' ? 'Properti' : kind === 'car' ? 'Mobil' : 'Motor'}: ${def.name}`,
+    });
     if (!charged.ok) return { ok: false, error: charged.error };
 
     const item = {
