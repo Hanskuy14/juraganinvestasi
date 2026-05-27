@@ -10,23 +10,26 @@
   /* =========================================================================
      CATEGORY 1 — Saham Lokal (15)
      Range: Rp 50 — Rp 40.000
+
+     Phase 6 — `outstandingShares` (5M..20M) caps total circulating supply.
+     Used to enforce supply on buy + drive Bandar (>=50%) "Goreng" mechanic.
      ========================================================================= */
   const STOCKS = [
-    { ticker: 'BBCA', name: 'Bank Central Asia',          price: 9_500,  vol: 0.022, sector: 'Perbankan' },
-    { ticker: 'BBRI', name: 'Bank Rakyat Indonesia',      price: 5_200,  vol: 0.026, sector: 'Perbankan' },
-    { ticker: 'BMRI', name: 'Bank Mandiri',               price: 6_800,  vol: 0.026, sector: 'Perbankan' },
-    { ticker: 'BBNI', name: 'Bank Negara Indonesia',      price: 5_500,  vol: 0.028, sector: 'Perbankan' },
-    { ticker: 'GOTO', name: 'GoTo Gojek Tokopedia',       price: 80,     vol: 0.045, sector: 'Teknologi' },
-    { ticker: 'TLKM', name: 'Telkom Indonesia',           price: 3_400,  vol: 0.024, sector: 'Telekomunikasi' },
-    { ticker: 'ASII', name: 'Astra International',        price: 4_900,  vol: 0.028, sector: 'Otomotif' },
-    { ticker: 'UNVR', name: 'Unilever Indonesia',         price: 2_400,  vol: 0.024, sector: 'Konsumsi' },
-    { ticker: 'ICBP', name: 'Indofood CBP',               price: 11_000, vol: 0.022, sector: 'Konsumsi' },
-    { ticker: 'BUMI', name: 'Bumi Resources',             price: 150,    vol: 0.048, sector: 'Energi' },
-    { ticker: 'ANTM', name: 'Aneka Tambang',              price: 1_700,  vol: 0.038, sector: 'Pertambangan' },
-    { ticker: 'PTBA', name: 'Bukit Asam',                 price: 2_900,  vol: 0.034, sector: 'Energi' },
-    { ticker: 'PGAS', name: 'Perusahaan Gas Negara',      price: 1_500,  vol: 0.030, sector: 'Energi' },
-    { ticker: 'KLBF', name: 'Kalbe Farma',                price: 1_550,  vol: 0.024, sector: 'Farmasi' },
-    { ticker: 'MDKA', name: 'Merdeka Copper Gold',        price: 2_700,  vol: 0.040, sector: 'Pertambangan' },
+    { ticker: 'BBCA', name: 'Bank Central Asia',          price: 9_500,  vol: 0.022, sector: 'Perbankan',     outstandingShares: 12_000_000 },
+    { ticker: 'BBRI', name: 'Bank Rakyat Indonesia',      price: 5_200,  vol: 0.026, sector: 'Perbankan',     outstandingShares: 18_000_000 },
+    { ticker: 'BMRI', name: 'Bank Mandiri',               price: 6_800,  vol: 0.026, sector: 'Perbankan',     outstandingShares: 15_000_000 },
+    { ticker: 'BBNI', name: 'Bank Negara Indonesia',      price: 5_500,  vol: 0.028, sector: 'Perbankan',     outstandingShares: 14_000_000 },
+    { ticker: 'GOTO', name: 'GoTo Gojek Tokopedia',       price: 80,     vol: 0.045, sector: 'Teknologi',     outstandingShares: 20_000_000 },
+    { ticker: 'TLKM', name: 'Telkom Indonesia',           price: 3_400,  vol: 0.024, sector: 'Telekomunikasi',outstandingShares: 19_000_000 },
+    { ticker: 'ASII', name: 'Astra International',        price: 4_900,  vol: 0.028, sector: 'Otomotif',      outstandingShares: 10_000_000 },
+    { ticker: 'UNVR', name: 'Unilever Indonesia',         price: 2_400,  vol: 0.024, sector: 'Konsumsi',      outstandingShares: 16_000_000 },
+    { ticker: 'ICBP', name: 'Indofood CBP',               price: 11_000, vol: 0.022, sector: 'Konsumsi',      outstandingShares:  8_000_000 },
+    { ticker: 'BUMI', name: 'Bumi Resources',             price: 150,    vol: 0.048, sector: 'Energi',        outstandingShares: 17_000_000 },
+    { ticker: 'ANTM', name: 'Aneka Tambang',              price: 1_700,  vol: 0.038, sector: 'Pertambangan',  outstandingShares: 13_000_000 },
+    { ticker: 'PTBA', name: 'Bukit Asam',                 price: 2_900,  vol: 0.034, sector: 'Energi',        outstandingShares:  9_000_000 },
+    { ticker: 'PGAS', name: 'Perusahaan Gas Negara',      price: 1_500,  vol: 0.030, sector: 'Energi',        outstandingShares: 11_000_000 },
+    { ticker: 'KLBF', name: 'Kalbe Farma',                price: 1_550,  vol: 0.024, sector: 'Farmasi',       outstandingShares:  7_000_000 },
+    { ticker: 'MDKA', name: 'Merdeka Copper Gold',        price: 2_700,  vol: 0.040, sector: 'Pertambangan',  outstandingShares:  5_000_000 },
   ];
 
   /* =========================================================================
@@ -182,9 +185,47 @@
    * Advances all 45 assets by one day using Random Walk with Drift.
    * `newsImpactByTicker` is a Map/object: ticker -> impact in [-1..+1].
    * Veteran analyst (HRD tier 3) adds a +0.2% positive drift bonus.
+   *
+   * Phase 6 — DELAYED news effect:
+   *   Before the random walk, every entry in state.pendingNewsEffects
+   *   (queued by yesterday's generateDailyNews + any "Goreng Saham") is
+   *   applied directly to its targeted asset. Affected tickers SKIP the
+   *   random walk for the day so the queued multiplier is the only move.
+   *   The queue is then cleared. TODAY's news is NOT applied here — the
+   *   caller (advanceDay) generates today's news AFTER this step and
+   *   queues their multipliers for tomorrow's call.
    */
   function calculateNextDayPrices(state, newsImpactByTicker = {}) {
     if (!state.marketAssets) initMarket(state);
+
+    // ----------------------------------------------------------------------
+    // Phase 6 — Step 1: apply yesterday's queued news effects + Goreng Saham.
+    // ----------------------------------------------------------------------
+    const affected = new Set();
+    const pending = Array.isArray(state.pendingNewsEffects)
+      ? state.pendingNewsEffects : [];
+    pending.forEach(eff => {
+      if (!eff || !eff.ticker) return;
+      const m = state.marketAssets[eff.ticker];
+      if (!m) return;
+      const pct = clamp(Number(eff.multiplier) || 0, -0.95, 5);
+      const before = m.price;
+      const next = Math.max(1, Math.round(before * (1 + pct)));
+      m.prevPrice    = before;
+      m.openPrice    = before;
+      m.price        = next;
+      m.dayChange    = next - before;
+      m.dayChangePct = before > 0 ? (m.dayChange / before) * 100 : 0;
+
+      // Push to history (one tick per day per asset).
+      const h = state.marketHistory[eff.ticker]
+        || (state.marketHistory[eff.ticker] = []);
+      h.push(next);
+      if (h.length > HISTORY_LENGTH) h.shift();
+
+      affected.add(eff.ticker);
+    });
+    state.pendingNewsEffects = [];
 
     // Apply analyst veteran drift bonus (Phase 3 perk)
     let analystBonus = 0;
@@ -195,10 +236,16 @@
       }
     }
 
+    // ----------------------------------------------------------------------
+    // Step 2: random walk for every UNAFFECTED asset. Phase 6 keeps news
+    // impact OUT of today's drift (news effect is delayed via the queue).
+    // ----------------------------------------------------------------------
     Object.values(CATEGORY).forEach(catMeta => {
       catMeta.assets.forEach(def => {
         const m = state.marketAssets[def.ticker];
         if (!m) return;
+        if (affected.has(def.ticker)) return; // already moved by pending effect
+
         const impact = clamp(
           (newsImpactByTicker[def.ticker] || 0) +
           (newsImpactByTicker[`cat:${catMeta.key}`] || 0) +
@@ -222,31 +269,9 @@
       });
     });
 
-    // ----------------------------------------------------------------------
-    // Phase 5: explicit asset-specific spike from today's headlines.
-    // Bullish stock|reksadana : +5..+15%, bullish crypto: +5..+40%,
-    // bearish (any): -5..-20%. Overrides random-walk for the named ticker.
-    // ----------------------------------------------------------------------
-    (state.dailyNews || []).forEach(news => {
-      const spike = news && news.assetSpike;
-      if (!spike) return;
-      const m = state.marketAssets[spike.ticker];
-      if (!m) return;
-      const [lo, hi] = spike.range || [0, 0];
-      const pct = lo + Math.random() * (hi - lo); // signed
-      const before = m.prevPrice; // pre-walk close
-      const next = Math.max(1, Math.round(before * (1 + pct)));
-      m.price = next;
-      m.dayChange = next - before;
-      m.dayChangePct = before > 0 ? (m.dayChange / before) * 100 : 0;
-      // Overwrite the last point in history (the random-walk-pushed value).
-      const hist = state.marketHistory[spike.ticker];
-      if (Array.isArray(hist) && hist.length > 0) {
-        hist[hist.length - 1] = next;
-      }
-      // Annotate the news object with the realized pct (handy for UI debug).
-      news.realizedPct = pct;
-    });
+    // Phase 6: news.assetSpike from TODAY's news is NOT applied here. Today's
+    // news drives TOMORROW's prices. advanceDay() pushes those multipliers
+    // into state.pendingNewsEffects so the next call consumes them above.
   }
 
   /* =========================================================================
@@ -400,6 +425,18 @@
     if (!idx) return { ok: false, error: 'Aset tidak ditemukan.' };
     qty = Math.floor(Number(qty) || 0);
     if (qty <= 0) return { ok: false, error: 'Jumlah harus lebih besar dari 0.' };
+
+    /* Phase 6 — circulating supply cap for the 15 Local Stocks. */
+    if (idx.category === 'saham' && idx.def.outstandingShares) {
+      const avail = availableSupply(state, ticker);
+      if (qty > avail) {
+        const total = idx.def.outstandingShares.toLocaleString('id-ID');
+        return {
+          ok: false,
+          error: `Suplai beredar habis! Hanya ${avail.toLocaleString('id-ID')} dari ${total} lembar yang tersisa.`,
+        };
+      }
+    }
 
     const m = state.marketAssets[ticker];
     const grossCost = Math.round(m.price * qty);
@@ -570,6 +607,145 @@
     return `${qty.toLocaleString('id-ID')} unit`;
   }
 
+  /* =========================================================================
+     Phase 6 — Bandar / "Goreng Saham" mechanics (Local Stocks ONLY)
+     ----------------------------------------------------------------
+     Circulating supply (outstandingShares) per stock is the cap on what
+     a player can ever own. Crossing the 50% threshold flips the player
+     into "Pemegang Saham Pengendali (Bandar)" status, which unlocks
+     the Goreng Saham action.
+     ========================================================================= */
+  function ownedUnits(state, ticker) {
+    const h = (state.portfolio || []).find(p => p.ticker === ticker);
+    return h ? h.qty : 0;
+  }
+
+  function availableSupply(state, ticker) {
+    const idx = TICKER_INDEX[ticker];
+    if (!idx || idx.category !== 'saham' || !idx.def.outstandingShares) {
+      return Infinity;
+    }
+    return Math.max(0, idx.def.outstandingShares - ownedUnits(state, ticker));
+  }
+
+  function ownershipPct(state, ticker) {
+    const idx = TICKER_INDEX[ticker];
+    if (!idx || !idx.def.outstandingShares) return 0;
+    return ownedUnits(state, ticker) / idx.def.outstandingShares;
+  }
+
+  function isBandar(state, ticker) {
+    return ownershipPct(state, ticker) >= 0.5;
+  }
+
+  function ownershipLabel(state, ticker) {
+    const idx = TICKER_INDEX[ticker];
+    if (!idx || idx.category !== 'saham' || !idx.def.outstandingShares) return null;
+    const pct = ownershipPct(state, ticker);
+    if (pct <= 0) return null;
+    return isBandar(state, ticker)
+      ? 'Pemegang Saham Pengendali (Bandar)'
+      : 'Pemegang Saham Minoritas';
+  }
+
+  /* =========================================================================
+     gorengSaham(state, ticker)
+     - Requires ownership >= 50% on a Local Stock.
+     - Cost: Rp 5.000.000.000 (5 Miliar) deducted from the richest bank.
+     - Effect: queues a guaranteed +40% multiplier on that ticker into
+       state.pendingNewsEffects so the spike lands on the NEXT advanceDay().
+     - Double-goreng on the same ticker (already queued) is rejected.
+     - Also pushes a "[GORENG]" headline into today's news feed.
+     ========================================================================= */
+  const GORENG_COST = 5_000_000_000;
+  const GORENG_MULTIPLIER = 0.40;
+  const GORENG_ICON = '🚨';
+
+  function richestBank(state) {
+    if (!state.banks || state.banks.length === 0) return null;
+    return state.banks.reduce((best, b) =>
+      (best == null || b.balance > best.balance) ? b : best, null);
+  }
+
+  function gorengSaham(state, ticker) {
+    const idx = TICKER_INDEX[ticker];
+    if (!idx || idx.category !== 'saham') {
+      return { ok: false, error: 'Hanya saham IDX yang bisa di-goreng.' };
+    }
+    if (!isBandar(state, ticker)) {
+      return {
+        ok: false,
+        error: 'Anda harus memegang minimal 50% (Bandar) untuk goreng saham ini.',
+      };
+    }
+
+    state.pendingNewsEffects = state.pendingNewsEffects || [];
+    if (state.pendingNewsEffects.some(e => e.ticker === ticker && e.source === 'goreng')) {
+      return { ok: false, error: 'Saham ini sudah Anda goreng untuk besok. Tunggu efeknya.' };
+    }
+
+    const bank = richestBank(state);
+    if (!bank || bank.balance < GORENG_COST) {
+      return {
+        ok: false,
+        error: `Butuh ${JI.formatIDR(GORENG_COST)} cash di rekening terkaya untuk operasi goreng.`,
+      };
+    }
+
+    // Debit the cost (audit-logged).
+    if (typeof JI.bankDebit === 'function') {
+      JI.bankDebit(state, bank.id, GORENG_COST, `Operasi Goreng Saham — ${ticker}`);
+    } else {
+      bank.balance -= GORENG_COST;
+    }
+
+    state.pendingNewsEffects.push({
+      ticker,
+      multiplier: GORENG_MULTIPLIER,
+      source: 'goreng',
+    });
+
+    // Surface a "leaked" headline today so the player can SEE the Bandar
+    // move in their News feed (the price impact still lands tomorrow).
+    const day = state.totalDays;
+    const news = {
+      day,
+      id: `${day}-goreng-${ticker}-${Math.random().toString(36).slice(2, 6)}`,
+      sourceId: `goreng-${ticker}`,
+      mood: 'bullish',
+      icon: GORENG_ICON,
+      headline: `[GORENG] Saham ${idx.def.name} Diborong Pihak Misterius Jelang Penutupan!`,
+      body: `Bursa Saham · ${ticker} — Volume meledak menjelang penutupan. Bandar saham bermain. Harga diperkirakan melonjak +40% besok.`,
+      targets: [{ scope: `asset:${ticker}`, impact: GORENG_MULTIPLIER }],
+      assetSpike: {
+        ticker,
+        name: idx.def.name,
+        category: idx.category,
+        sentiment: 'bullish',
+        range: [GORENG_MULTIPLIER, GORENG_MULTIPLIER],
+      },
+      realizedPct: GORENG_MULTIPLIER,
+      multiplier: GORENG_MULTIPLIER,
+      isGoreng: true,
+    };
+    state.dailyNews = state.dailyNews || [];
+    state.dailyNews.push(news);
+    state.newsHistory = state.newsHistory || [];
+    state.newsHistory.unshift(news);
+    if (state.newsHistory.length > 200) state.newsHistory.length = 200;
+
+    if (typeof JI.recomputeNetWorth === 'function') JI.recomputeNetWorth(state);
+
+    return {
+      ok: true,
+      ticker,
+      cost: GORENG_COST,
+      multiplier: GORENG_MULTIPLIER,
+      bankId: bank.id,
+      bankName: bank.shortName || bank.name,
+    };
+  }
+
   /* ---------- Expose ---------- */
   Object.assign(JI, {
     CATEGORY,
@@ -592,5 +768,14 @@
     getBrokerRates,
     DEFAULT_BROKER_FEE,
     PPH_FINAL_RATE,
+    // Phase 6 additions
+    ownedUnits,
+    availableSupply,
+    ownershipPct,
+    isBandar,
+    ownershipLabel,
+    gorengSaham,
+    GORENG_COST,
+    GORENG_MULTIPLIER,
   });
 })(window);
