@@ -55,11 +55,13 @@
 
   /* ---------- Credit card rules ----------
      Approval & limit are based on current bank balance.
-     Limit = 50% of balance, capped at Rp 100,000,000.
+     Initial offer:  Limit = 50% of balance, capped at Rp 100,000,000.
+     Upgrade (Phase 7): Limit = 50% of CURRENT balance, capped at Rp 1,000,000,000.
      Minimum balance to qualify: Rp 5,000,000.
   */
-  const CC_MIN_BALANCE = 5_000_000;
-  const CC_MAX_LIMIT   = 100_000_000;
+  const CC_MIN_BALANCE     = 5_000_000;
+  const CC_MAX_LIMIT       = 100_000_000;
+  const CC_MAX_LIMIT_UPGRADE = 1_000_000_000;
 
   function creditCardOffer(balance) {
     if (balance < CC_MIN_BALANCE) {
@@ -122,7 +124,7 @@
   }
 
   /* ---------- Initialize banks on a fresh state ---------- */
-  function initBanks(state) {
+  function initBanks(state, customCapital) {
     if (!state) return;
     if (state.banks && state.banks.length === BANK_DEFS.length) {
       // Already initialized — just refresh tiers in case rules changed.
@@ -130,9 +132,15 @@
       return;
     }
 
-    const total = JI.STARTING_CAPITAL;
-    const parts = JI.splitUnequal(total, BANK_DEFS.length, 5_000_000);
+    // Phase 7: support custom starting capital from main menu.
+    const total = Number(customCapital) > 0
+      ? Math.floor(Number(customCapital))
+      : (state.startingCapital || JI.STARTING_CAPITAL);
+    // Min part: keep small but proportional so tiny starts (Rp 10jt) work.
+    const minPart = Math.max(1_000_000, Math.floor(total / 100));
+    const parts = JI.splitUnequal(total, BANK_DEFS.length, minPart);
     state.banks = BANK_DEFS.map((def, i) => makeBank(def, parts[i]));
+    state.startingCapital = total;
   }
 
   /* ---------- Lookup ---------- */
@@ -185,6 +193,33 @@
     bank.creditCard.used = 0;
     // Phase 5: no XP from CC approval.
     return { ok: true, limit: offer.limit };
+  }
+
+  /* ---------- Operation: Credit card limit UPGRADE (Phase 7) ----------
+     New maximum = 50% of current balance, capped at Rp 1.000.000.000.
+     Approval requires the new max to exceed the current limit. */
+  function upgradeCreditCardLimit(state, bankId) {
+    const bank = getBank(state, bankId);
+    if (!bank) return { ok: false, error: 'Bank tidak ditemukan.' };
+    if (!bank.creditCard.isApproved) {
+      return { ok: false, error: 'Aktifkan kartu kredit terlebih dahulu.' };
+    }
+    const newMax = Math.min(Math.floor(bank.balance * 0.5), CC_MAX_LIMIT_UPGRADE);
+    const oldLimit = bank.creditCard.limit || 0;
+    if (newMax <= oldLimit) {
+      return {
+        ok: false,
+        error: `Pengajuan ditolak. Saldo Anda di ${bank.shortName} belum cukup untuk menaikkan limit ` +
+               `(plafon baru ${JI.formatIDR(newMax)} ≤ limit saat ini ${JI.formatIDR(oldLimit)}).`,
+      };
+    }
+    bank.creditCard.limit = newMax;
+    return {
+      ok: true,
+      oldLimit,
+      newLimit: newMax,
+      delta: newMax - oldLimit,
+    };
   }
 
   /* ---------- Operation: Apply KTA loan ---------- */
@@ -240,11 +275,13 @@
     getBank,
     transfer,
     applyCreditCard,
+    upgradeCreditCardLimit,
     applyLoan,
     totalBankBalance,
     activeLoanCount,
     LOAN_INTEREST_FLAT,
     LOAN_TERM_DAYS,
     CC_MAX_LIMIT,
+    CC_MAX_LIMIT_UPGRADE,
   });
 })(window);

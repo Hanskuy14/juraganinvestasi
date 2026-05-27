@@ -1,5 +1,5 @@
 /* =========================================================================
-   app.js — Bootstrap, intro animation, periodic refresh.
+   app.js — Bootstrap, intro animation, periodic refresh, onboarding flow.
    ========================================================================= */
 
 (function (global) {
@@ -44,28 +44,99 @@
     if (app) app.classList.remove('hidden');
   }
 
+  function hideMainMenu() {
+    const menu = document.getElementById('main-menu');
+    if (menu) {
+      menu.classList.add('hidden');
+      menu.classList.remove('flex');
+    }
+  }
+
+  function showMainMenu() {
+    const menu = document.getElementById('main-menu');
+    if (!menu) return;
+    menu.classList.remove('hidden');
+    menu.classList.add('flex');
+    if (typeof JI.renderMainMenu === 'function') {
+      JI.renderMainMenu(menu, finishOnboarding);
+    }
+  }
+
+  /* ---------- Onboarding result handler ----------
+     Called by the Main Menu form submit. Distributes capital, marks the
+     state initialized, then reveals the OS interface. */
+  function finishOnboarding({ name, gender, capital }) {
+    const s = JI.gameState;
+    s.playerName    = name;
+    s.playerGender  = gender;
+    s.startingCapital = Math.floor(capital);
+    s.banks         = []; // force re-init at custom capital
+    JI.initBanks(s, s.startingCapital);
+
+    // Phase 7: seed the IPO pool so the first Next Day can spawn already.
+    if (typeof JI.ensureIPOPool === 'function') JI.ensureIPOPool(s);
+
+    s.meta = s.meta || {};
+    s.meta.initialized = true;
+    s.totalDays = 1;
+
+    JI.recomputeNetWorth(s);
+    JI.saveState(s);
+
+    hideMainMenu();
+    showApp();
+    JI.renderAll();
+
+    // Welcoming toast
+    const title = `${gender === 'Ibu' ? 'Ibu' : 'Bapak'} ${name}`;
+    JI.toast(`Selamat datang, CEO ${title}! Modal ${JI.formatIDR(s.startingCapital)} telah dibagi ke 3 bank.`, 'success', 5000);
+  }
+
   function bootstrap() {
-    // 1. Init state and banks
+    // 1. Init state (load or create v3 default)
     JI.initState();
-    JI.initBanks(JI.gameState);
-    // Phase 5: ensure the 45 hardcoded asset prices are seeded.
+
+    // 2. Always seed market (45 base assets + dynamicAssets re-hydration).
     if (typeof JI.seedMarket === 'function') JI.seedMarket(JI.gameState);
+
+    // 3. If already initialized, also init/refresh banks now.
+    if (JI.gameState.meta && JI.gameState.meta.initialized) {
+      JI.initBanks(JI.gameState);
+    }
+
     JI.recomputeNetWorth(JI.gameState);
     JI.saveState(JI.gameState);
 
-    // 2. Build static UI scaffolding
+    // 4. Build static UI scaffolding (works even before app reveal).
     JI.buildTabs();
     JI.bindGlobalEvents();
 
-    // 3. Render the active tab
-    JI.renderAll();
-
-    // 4. Periodic header refresh (clock + net worth display) every 30s.
-    setInterval(JI.renderHeader, 30_000);
+    // 5. Periodic header refresh every 30s.
+    setInterval(() => {
+      if (JI.gameState && JI.gameState.meta && JI.gameState.meta.initialized) {
+        JI.renderHeader();
+      }
+    }, 30_000);
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     bootstrap();
-    runIntro().then(showApp);
+    runIntro().then(() => {
+      const s = JI.gameState;
+      if (s && s.meta && s.meta.initialized) {
+        showApp();
+        JI.renderAll();
+      } else {
+        showMainMenu();
+      }
+    });
+  });
+
+  /* ---------- Expose ----------
+     finishOnboarding is reachable for debug too. */
+  Object.assign(JI, {
+    finishOnboarding,
+    showMainMenu,
+    hideMainMenu,
   });
 })(window);

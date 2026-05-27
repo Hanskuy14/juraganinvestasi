@@ -184,10 +184,33 @@
     }, 0);
   }
 
+  /* ============================================================
+     ADD (Phase 7) — grant shares without debiting any bank.
+     Used by: e-IPO allotments, the player's own Startup IPO.
+     ============================================================ */
+  function addToPortfolio(state, ticker, qty, avgPrice) {
+    const q = Math.max(0, Math.floor(Number(qty) || 0));
+    const p = Math.max(1, Math.floor(Number(avgPrice) || 0));
+    if (q <= 0) return null;
+    if (!state.portfolio) state.portfolio = [];
+
+    let pos = findPosition(state, ticker);
+    if (!pos) {
+      pos = { ticker, qty: 0, avgPrice: 0 };
+      state.portfolio.push(pos);
+    }
+    const newQty = pos.qty + q;
+    pos.avgPrice = Math.round(((pos.avgPrice * pos.qty) + (p * q)) / newQty);
+    pos.qty = newQty;
+    JI.recomputeNetWorth(state);
+    return pos;
+  }
+
   /* ---------- Expose ---------- */
   Object.assign(JI, {
     buyAsset,
     sellAsset,
+    addToPortfolio,
     findPosition,
     positionSnapshot,
     portfolioMarketValue,

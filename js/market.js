@@ -89,10 +89,20 @@
   }
 
   /* ---------- Price seeding ----------
-     Initialize assetPrices/priceHistory if missing or incomplete. */
+     Initialize assetPrices/priceHistory if missing or incomplete.
+     Phase 7: re-hydrate any persisted dynamicAssets back into JI.ASSETS so
+     they survive page reloads. */
   function seedMarket(state) {
     if (!state.assetPrices)  state.assetPrices  = {};
     if (!state.priceHistory) state.priceHistory = {};
+
+    // Re-hydrate runtime-created assets (player IPO, e-IPO listings).
+    if (Array.isArray(state.dynamicAssets) && state.dynamicAssets.length) {
+      state.dynamicAssets.forEach(da => {
+        if (!ASSETS.find(a => a.ticker === da.ticker)) ASSETS.push(da);
+      });
+    }
+
     ASSETS.forEach(a => {
       if (state.assetPrices[a.ticker] == null) {
         state.assetPrices[a.ticker]  = a.initialPrice;
@@ -102,6 +112,40 @@
         state.priceHistory[a.ticker] = [state.assetPrices[a.ticker]];
       }
     });
+  }
+
+  /* ---------- Add a dynamic asset at runtime (Phase 7) ----------
+     Used by the e-IPO listing flow and the player Startup IPO. The asset
+     becomes a first-class member of JI.ASSETS and is persisted via
+     state.dynamicAssets so it survives page reloads. */
+  function addDynamicAsset(state, def) {
+    if (!def || !def.ticker) return null;
+    if (ASSETS.find(a => a.ticker === def.ticker)) return null; // dedupe
+
+    const asset = {
+      ticker: def.ticker,
+      name: def.name || def.ticker,
+      category: def.category || 'stock',
+      sector: def.sector || 'Lainnya',
+      initialPrice: Math.max(1, Math.floor(def.initialPrice || 100)),
+      volatility: typeof def.volatility === 'number' ? def.volatility : 0.025,
+    };
+
+    ASSETS.push(asset);
+
+    // persist
+    if (!Array.isArray(state.dynamicAssets)) state.dynamicAssets = [];
+    if (!state.dynamicAssets.find(a => a.ticker === asset.ticker)) {
+      state.dynamicAssets.push(asset);
+    }
+
+    // seed price + history
+    if (!state.assetPrices) state.assetPrices = {};
+    if (!state.priceHistory) state.priceHistory = {};
+    state.assetPrices[asset.ticker]  = asset.initialPrice;
+    state.priceHistory[asset.ticker] = [asset.initialPrice];
+
+    return asset;
   }
 
   /* ---------- Apply a multiplicative pct to a single asset ---------- */
@@ -202,6 +246,7 @@
     getAssetsBySector,
     getCurrentPrice,
     seedMarket,
+    addDynamicAsset,
     applyPctToTicker,
     applyPctToCategory,
     newsImpactPct,

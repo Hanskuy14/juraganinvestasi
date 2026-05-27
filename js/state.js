@@ -8,9 +8,13 @@
   const JI = global.JI || (global.JI = {});
 
   const STORAGE_KEY = 'juragan_investasi_state_v1';
-  const STARTING_CAPITAL = 150_000_000; // Rp 150jt
-  const STATE_VERSION = 2;
+  const STARTING_CAPITAL = 150_000_000; // Rp 150jt (legacy fallback)
+  const STATE_VERSION = 3;
   const DEFAULT_DAILY_OPS_COST = 500_000; // Rp 500rb / hari (placeholder)
+
+  // Phase 7 — custom starting capital bounds
+  const MIN_STARTING_CAPITAL = 10_000_000;             // Rp 10 juta
+  const MAX_STARTING_CAPITAL = 100_000_000_000_000;    // Rp 100 triliun
 
   /* ---------- Company titles by level ---------- */
   const COMPANY_TITLES = [
@@ -42,15 +46,24 @@
     return {
       version: STATE_VERSION,
       totalDays: 1,
-      totalNetWorth: STARTING_CAPITAL,
+      totalNetWorth: 0,
 
-      // Banks created by banking.js init when state is fresh.
+      // Phase 7 — Player identity
+      playerName: '',
+      playerGender: 'Bapak',     // 'Bapak' | 'Ibu'
+      startingCapital: 0,        // user-chosen Modal Awal
+
+      // Banks created by banking.js after onboarding completes.
       banks: [],
 
       // ----- Market & Portfolio (populated by market.js) -----
       assetPrices: {},        // ticker -> currentPrice
       priceHistory: {},       // ticker -> [last 60 closes]
       portfolio: [],          // [{ticker, qty, avgPrice}]
+
+      // Phase 7 — assets created at runtime (player IPO, e-IPO listings).
+      // Each entry: { ticker, name, category, sector, initialPrice, volatility }
+      dynamicAssets: [],
 
       // ----- News -----
       newsHistory: [],        // [{day, ticker, headline, sentiment, category}]
@@ -75,6 +88,14 @@
         officeCapacity: 0,
       },
 
+      // Phase 7 — Venture Builder
+      myStartup: null,           // see venture.js for shape
+
+      // Phase 7 — e-IPO marketplace (populated by ipo.js on first run)
+      ipoPool: null,             // array of company defs not yet spawned
+      activeIPOs: [],            // companies currently accepting orders
+      ipoHistory: [],            // log of listing/refund events
+
       // Company progression
       companyLevel: 1,
       companyXP: 0,
@@ -83,20 +104,24 @@
       activeTab: 'home',
       meta: {
         createdAt: Date.now(),
+        initialized: false,    // false until pre-game menu submitted
       },
     };
   }
 
   /* ---------- Migrations ----------
-     v1 -> v2: add Phase 5 fields without nuking the player's banks/level. */
+     v1 -> v2: add Phase 5 fields without nuking the player's banks/level.
+     v2 -> v3: add Phase 7 fields (player identity, venture, IPO). Existing
+               saves with banks already populated are considered initialized. */
   function migrate(state) {
     if (!state) return defaultState();
+
+    // v1 -> v2 (carried over from prior phase)
     if (!state.version || state.version < 2) {
       const fresh = defaultState();
-      const merged = {
+      state = {
         ...fresh,
         ...state,
-        // Re-add fields that may have been missing in v1.
         assetPrices:        state.assetPrices  || {},
         priceHistory:       state.priceHistory || {},
         portfolio:          Array.isArray(state.portfolio) ? state.portfolio : [],
@@ -108,10 +133,33 @@
         annualTax:          state.annualTax || 0,
         dailyOpsCost:       state.dailyOpsCost || DEFAULT_DAILY_OPS_COST,
         opsCostMultiplierToday: 1,
-        version: STATE_VERSION,
+        version: 2,
       };
-      return merged;
     }
+
+    // v2 -> v3: Phase 7
+    if (state.version < 3) {
+      const meta = state.meta || { createdAt: Date.now() };
+      // Existing saves that have banks should be treated as already onboarded.
+      const wasInitialized = Array.isArray(state.banks) && state.banks.length > 0;
+      state = {
+        ...state,
+        playerName:       state.playerName       || (wasInitialized ? 'Juragan' : ''),
+        playerGender:     state.playerGender     || 'Bapak',
+        startingCapital:  state.startingCapital  || (wasInitialized ? STARTING_CAPITAL : 0),
+        dynamicAssets:    Array.isArray(state.dynamicAssets) ? state.dynamicAssets : [],
+        myStartup:        state.myStartup || null,
+        ipoPool:          Array.isArray(state.ipoPool) ? state.ipoPool : null,
+        activeIPOs:       Array.isArray(state.activeIPOs) ? state.activeIPOs : [],
+        ipoHistory:       Array.isArray(state.ipoHistory) ? state.ipoHistory : [],
+        meta: {
+          ...meta,
+          initialized: meta.initialized != null ? meta.initialized : wasInitialized,
+        },
+        version: 3,
+      };
+    }
+
     return state;
   }
 
@@ -188,6 +236,8 @@
   /* ---------- Expose ---------- */
   Object.assign(JI, {
     STARTING_CAPITAL,
+    MIN_STARTING_CAPITAL,
+    MAX_STARTING_CAPITAL,
     STATE_VERSION,
     DEFAULT_DAILY_OPS_COST,
     COMPANY_TITLES,

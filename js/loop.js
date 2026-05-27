@@ -110,7 +110,24 @@
     /* 7. Daily operational cost (with optional event multiplier). */
     const opsReport = chargeOperationalCost(state);
 
-    /* 8. Finalize. (Phase 5: explicitly NO XP awarded here.) */
+    /* 8. Phase 7 — Venture monthly burn (every 30 days from foundedDay). */
+    const ventureReport = (typeof JI.processMonthlyBurn === 'function')
+      ? JI.processMonthlyBurn(state)
+      : null;
+
+    /* 9. Phase 7 — e-IPO daily ticks: process listings (settle orders) THEN
+          maybe spawn a new IPO. Listings happen first so a freshly spawned
+          IPO can't accidentally list on the same day. */
+    let ipoSpawned = null;
+    let ipoListings = [];
+    if (typeof JI.processListings === 'function') {
+      ipoListings = JI.processListings(state) || [];
+    }
+    if (typeof JI.maybeSpawnIPO === 'function') {
+      ipoSpawned = JI.maybeSpawnIPO(state);
+    }
+
+    /* 10. Finalize. (Phase 5: explicitly NO XP awarded here.) */
     JI.recomputeNetWorth(state);
     JI.saveState(state);
 
@@ -120,6 +137,9 @@
       event,            // null or populated event object
       loanReport,
       opsReport,
+      ventureReport,    // Phase 7
+      ipoSpawned,       // Phase 7
+      ipoListings,      // Phase 7
     };
   }
 
